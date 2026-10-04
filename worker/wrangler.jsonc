@@ -4,5 +4,29 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "compatibility_flags": ["nodejs_compat"],
-  "artifacts": [{ "binding": "ARTIFACTS", "namespace": "claimcheck" }]
+  "artifacts": [{ "binding": "ARTIFACTS", "namespace": "claimcheck" }],
+  "ai": { "binding": "AI" },
+  "workflows": [
+    { "name": "claimcheck-verify", "binding": "VERIFY_WF", "class_name": "VerifyWorkflow" }
+  ],
+  "durable_objects": {
+    "bindings": [{ "name": "REPO_DO", "class_name": "RepoDO" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RepoDO"] }],
+  "vars": {
+    "CANON_REPO": "canon",
+    "LLM_MODEL": "@cf/qwen/qwen3.8-27b"
+  },
+  "triggers": {
+    "events": [
+      {
+        // Every push to any repo in the namespace starts one Workflow run.
+        // Forks are made at runtime, so no per-repo subscription is needed.
+        "type": "cf.artifacts.repo.pushed",
+        "filter": { "namespace": "claimcheck" },
+        "targets": [{ "type": "workflow", "workflow_name": "claimcheck-verify" }]
+      }
+    ]
+  },
+  "observability": { "enabled": true, "logs": { "enabled": true } }
 }

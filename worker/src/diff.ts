@@ -1,6 +1,6 @@
 // Diff two commits with the Artifacts binding's read methods only.
 // The binding has no diff API, so we walk both trees and skip subtrees whose hashes match.
-import { diffLines } from "diff";
+import { createTwoFilesPatch, diffLines } from "diff";
 import type { FileChange } from "./verify/types";
 
 interface TreeEntry {
@@ -55,14 +55,20 @@ async function walk(repo: GitReader, oldTree: string | null, newTree: string | n
 	await Promise.all(subwalks);
 }
 
-async function text(repo: GitReader, hash: string | null): Promise<string> {
+export async function readText(repo: GitReader, hash: string | null): Promise<string> {
 	if (hash === null) return "";
 	const blob = await repo.readBlob(hash);
 	if (blob === null) throw new Error(`blob ${hash} not found`);
 	return blob.text();
 }
 
+const isBinary = (s: string) => s.includes("\0");
+
+// A binary file counts as one changed line per side; a text diff of it means nothing.
 export function lineCounts(oldText: string, newText: string) {
+	if (isBinary(oldText) || isBinary(newText)) {
+		return { additions: newText === "" ? 0 : 1, deletions: oldText === "" ? 0 : 1 };
+	}
 	let additions = 0;
 	let deletions = 0;
 	for (const part of diffLines(oldText, newText)) {
@@ -83,8 +89,16 @@ export async function diffCommits(repo: GitReader, baseCommit: string, headCommi
 
 	return Promise.all(
 		raw.map(async (c) => {
-			const [o, n] = await Promise.all([text(repo, c.oldHash), text(repo, c.newHash)]);
+			const [o, n] = await Promise.all([readText(repo, c.oldHash), readText(repo, c.newHash)]);
 			return { ...c, ...lineCounts(o, n) };
 		}),
 	);
+}
+
+export function unifiedDiff(path: string, oldText: string, newText: string): string {
+	if (isBinary(oldText) || isBinary(newText)) return `Binary file ${path} changed`;
+	return createTwoFilesPatch(`a/${path}`, `b/${path}`, oldText, newText, "", "", { context: 3 })
+		.split("\n")
+		.filter((l) => !l.startsWith("==="))
+		.join("\n");
 }
