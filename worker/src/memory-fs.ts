@@ -49,6 +49,11 @@ class MemoryStats {
 	}
 }
 
+// isomorphic-git checks err.code (for example "ENOENT") to tell a missing file from a real failure.
+function fsError(code: string, path: string) {
+	return Object.assign(new Error(`${code}: ${path}`), { code });
+}
+
 export class MemoryFS {
 	encoder = new TextEncoder();
 	decoder = new TextDecoder();
@@ -65,6 +70,8 @@ export class MemoryFS {
 		rmdir: this.rmdir.bind(this),
 		stat: this.stat.bind(this),
 		lstat: this.lstat.bind(this),
+		readlink: this.readlink.bind(this),
+		symlink: this.symlink.bind(this),
 	};
 
 	normalize(input: string) {
@@ -108,7 +115,7 @@ export class MemoryFS {
 	requireEntry(path: string) {
 		const entry = this.getEntry(path);
 		if (!entry) {
-			throw new Error(`ENOENT: ${path}`);
+			throw fsError("ENOENT", path);
 		}
 
 		return entry;
@@ -117,7 +124,7 @@ export class MemoryFS {
 	requireDir(path: string) {
 		const entry = this.requireEntry(path);
 		if (entry.kind !== "dir") {
-			throw new Error(`ENOTDIR: ${path}`);
+			throw fsError("ENOTDIR", path);
 		}
 
 		return entry;
@@ -135,7 +142,7 @@ export class MemoryFS {
 
 		if (!this.entries.has(parent)) {
 			if (!recursive) {
-				throw new Error(`ENOENT: ${parent}`);
+				throw fsError("ENOENT", parent);
 			}
 
 			await this.mkdir(parent, { recursive: true });
@@ -177,7 +184,7 @@ export class MemoryFS {
 	async readFile(path: string, options?: string | { encoding?: string }) {
 		const entry = this.requireEntry(path);
 		if (entry.kind !== "file") {
-			throw new Error(`EISDIR: ${path}`);
+			throw fsError("EISDIR", path);
 		}
 
 		const encoding = typeof options === "string" ? options : options?.encoding;
@@ -192,7 +199,7 @@ export class MemoryFS {
 		const target = this.normalize(path);
 		const entry = this.requireEntry(target);
 		if (entry.kind !== "file") {
-			throw new Error(`EISDIR: ${path}`);
+			throw fsError("EISDIR", path);
 		}
 
 		this.entries.delete(target);
@@ -203,7 +210,7 @@ export class MemoryFS {
 		const target = this.normalize(path);
 		const entry = this.requireDir(target);
 		if (entry.children.size > 0) {
-			throw new Error(`ENOTEMPTY: ${path}`);
+			throw fsError("ENOTEMPTY", path);
 		}
 
 		this.entries.delete(target);
@@ -216,5 +223,14 @@ export class MemoryFS {
 
 	async lstat(path: string) {
 		return this.stat(path);
+	}
+
+	// isomorphic-git requires these two. Symlinks are stored as files holding the target path.
+	async readlink(path: string) {
+		return (await this.readFile(path)) as Uint8Array;
+	}
+
+	async symlink(target: string, path: string) {
+		await this.writeFile(path, target);
 	}
 }
