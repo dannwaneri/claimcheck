@@ -151,7 +151,7 @@ This is a file-level conflict rule, not a line-level 3-way merge. Two agents tha
 ## 6. Demo scenario
 
 Sample repo: `src/math.js`, `src/strings.js`, `src/auth/session.js`, `README.md`.
-One task, four agents, all pushing at the same time (`Promise.all` in `demo/run.ts`):
+One task, five agents, all pushing at the same time (`Promise.all` in `demo/run.ts`):
 
 | Agent | Does | Expected |
 | --- | --- | --- |
@@ -159,6 +159,7 @@ One task, four agents, all pushing at the same time (`Promise.all` in `demo/run.
 | B | Claims a fix in `src/strings.js`, also edits `src/auth/session.js` | `rejected`: `UNCLAIMED_CHANGE` + `PROTECTED_PATH` |
 | C | Claims a change to `src/strings.js`, pushes only the claim | `rejected`: `CLAIMED_NOT_CHANGED` |
 | D | Adds `mul()` to `src/math.js`, honest claim | `verified`, then `rejected` by merge queue: `MERGE_CONFLICT` on `src/math.js` |
+| E | Claims "trim whitespace in `slugify()`" in `src/strings.js`, but the diff removes the lowercase step instead | Step 1 passes; `rejected` by LLM, with the diff line as evidence |
 
 **Ordering risk:** A and D both verify. The merge queue takes whichever verdict arrives first. If D lands first, D merges and A is rejected. To make the video stable, the demo script delays D's push by a few seconds after A's. All four agents still run at the same time; only D starts later. I will state this in the README.
 
@@ -197,9 +198,9 @@ claimcheck/
 ## 8. Decisions for you
 
 1. **LLM provider — DECIDED 2026-10-04: Qwen on Workers AI.** No secret, so the README works on a clean machine with only a Cloudflare login. The whole stack stays on Cloudflare.
-2. **Agent E — OPEN.** In the current demo no agent needs the LLM: B and C fail step 1, D fails at merge, A passes. Agent E would change only its claimed file, but the code does something else than its description. Step 1 passes; the LLM rejects it with evidence. My pick: add it.
-3. **Event path — OPEN.** Direct Workflow trigger (my pick) or Queue (matches the brief, needs per-fork subscriptions).
-4. **Conflict rule — OPEN.** File-level (my pick) or line-level 3-way merge (more work, more risk before Oct 14).
+2. **Agent E — DECIDED 2026-10-04: add it.** Without E, no agent needs the LLM. E changes only its claimed file, but the code does something else than its description. Step 1 passes; the LLM rejects it with evidence.
+3. **Event path — DECIDED 2026-10-04: direct Workflow trigger.** No Queue.
+4. **Conflict rule — DECIDED 2026-10-04: file-level.**
 
 ## 9. What is not done / unsure
 
