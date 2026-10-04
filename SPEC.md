@@ -119,6 +119,13 @@ Every finding has `{ code, path?, detail }`. Any finding → `rejected`. The LLM
 
 ### Step 2 — LLM (runs only if step 1 passes)
 
+**Model:** Qwen on Workers AI, through the `AI` binding (`env.AI.run(model, …)`). No API key.
+
+- First choice: `@cf/qwen/qwen3.8-27b`.
+- Backup: `@cf/qwen/qwen2.5-coder-32b-instruct`.
+- Both are in the account's model list (checked 2026-10-04 with `wrangler ai models`). Neither is tested for this task yet.
+- The model name is one config value (`LLM_MODEL` var in `wrangler.jsonc`). Step 3 runs the same demo diffs through both models and keeps the one that returns valid JSON every time and quotes the right lines.
+
 For each `changes[]` item, send the description and that file's unified diff. The model returns, per item:
 `{ path, matches: "yes" | "no" | "unclear", evidence: "<quote from the diff>" }`.
 
@@ -164,7 +171,7 @@ claimcheck/
   README.md
   spike/                  Step 0 proof (kept for reference)
   worker/
-    wrangler.jsonc        ARTIFACTS, VERIFY_WF, REPO_DO, AI (or secret), event trigger
+    wrangler.jsonc        ARTIFACTS, VERIFY_WF, REPO_DO, AI, LLM_MODEL var, event trigger
     src/
       index.ts            fetch: POST /tasks, GET /tasks/:id, GET / (dashboard)
       workflow.ts         VerifyWorkflow: claim → diff → checks → LLM → verdict → enqueue
@@ -172,7 +179,7 @@ claimcheck/
       artifacts.ts        requireArtifacts(env), treeDiff(), lineDiff()
       claim.ts            parse + validate claim
       verify/deterministic.ts
-      verify/llm.ts
+      verify/llm.ts       judgeChange(description, diff) via env.AI (Qwen)
       merge.ts            conflict check + isomorphic-git apply
       memory-fs.ts        from the Cloudflare isomorphic-git example
       dashboard.ts        one HTML page, server-rendered
@@ -189,16 +196,15 @@ claimcheck/
 
 ## 8. Decisions for you
 
-1. **LLM provider.** Options:
-   - Claude API (`claude-sonnet-5-5`) with a `ANTHROPIC_API_KEY` secret. Better evidence quality. Needs one secret on a clean machine.
-   - Workers AI binding. No secret, works on a clean machine with only a Cloudflare login. Weaker at quoting evidence.
-   - **My pick: Claude API**, with the README showing the one `wrangler secret put` step.
-2. **Event path.** Direct Workflow trigger (my pick) or Queue (matches the brief, needs per-fork subscriptions).
-3. **Conflict rule.** File-level (my pick) or line-level 3-way merge (more work, more risk before Oct 14).
+1. **LLM provider — DECIDED 2026-10-04: Qwen on Workers AI.** No secret, so the README works on a clean machine with only a Cloudflare login. The whole stack stays on Cloudflare.
+2. **Agent E — OPEN.** In the current demo no agent needs the LLM: B and C fail step 1, D fails at merge, A passes. Agent E would change only its claimed file, but the code does something else than its description. Step 1 passes; the LLM rejects it with evidence. My pick: add it.
+3. **Event path — OPEN.** Direct Workflow trigger (my pick) or Queue (matches the brief, needs per-fork subscriptions).
+4. **Conflict rule — OPEN.** File-level (my pick) or line-level 3-way merge (more work, more risk before Oct 14).
 
 ## 9. What is not done / unsure
 
 - The verifier, merge queue, and dashboard are not built. Only the spike exists.
+- No Qwen call has been made yet. JSON reliability and evidence quality are unknown.
 - I did not test a push of a **deleted** file or a **new directory** through `readTree`. I expect it to work, but it is not proved.
 - I did not test isomorphic-git push from a Worker to canon. The Cloudflare docs show it works; our spike did not do it.
 - `event.payload` shape: proved for one push. I did not test a push with many commits or a force push.
