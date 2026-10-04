@@ -18,7 +18,7 @@ describe("findConflicts", () => {
 	});
 
 	it("returns every shared path, sorted", () => {
-		expect(findConflicts([ch("b.js"), ch("a.js"), ch("c.js")], [ch("c.js"), ch("a.js")])).toEqual(["a.js", "c.js"]);
+		expect(findConflicts([ch("c.js"), ch("b.js"), ch("a.js")], [ch("a.js"), ch("c.js")])).toEqual(["a.js", "c.js"]);
 	});
 
 	it("ignores .claim/ (every agent writes it)", () => {

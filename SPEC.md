@@ -202,7 +202,22 @@ claimcheck/
 3. **Event path — DECIDED 2026-10-04: direct Workflow trigger.** No Queue.
 4. **Conflict rule — DECIDED 2026-10-04: file-level.**
 
-## 9. What is not done / unsure
+## 9. Step 3 results (2026-10-04)
+
+End-to-end run on the deployed Worker, task `tmutx0qo6`, five agents pushing at once (D delayed 20 s):
+
+| Agent | Verdict | Evidence |
+| --- | --- | --- |
+| A | verified, merged | Qwen yes; canon commit `d22a3c0` holds `sub()` and no `.claim/` |
+| B | rejected | `UNCLAIMED_CHANGE` + `PROTECTED_PATH` on `src/auth/session.js` |
+| C | rejected | `CLAIMED_NOT_CHANGED` on `src/strings.js` |
+| D | verified, merge rejected | `MERGE_CONFLICT` on `src/math.js` |
+| E | rejected | Qwen no, quoted `return s.replace(/\s+/g, "-");` |
+
+- Model: `@cf/qwen/qwen3.8-27b` gave valid JSON and correct evidence on all 4 calls. I did **not** run the backup model; the first choice met the criteria.
+- Bug found in the Cloudflare docs helper (`memory-fs.ts`): no `readlink`/`symlink` and no `err.code`. isomorphic-git `clone` fails with it. Fixed and covered by a test.
+
+## 10. What is not done / unsure
 
 - The verifier, merge queue, and dashboard are not built. Only the spike exists.
 - No Qwen call has been made yet. JSON reliability and evidence quality are unknown.

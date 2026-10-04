@@ -72,6 +72,15 @@ describe("decide", () => {
 		expect(decide(items, { "src/strings.js": diff })).toBe("rejected");
 	});
 
+	it("matches evidence that quotes a removed line with the - prefix and different spacing", () => {
+		const items = [j("src/strings.js", "no", "- return s.trim().toLowerCase().replace(/\\s+/g, '-');")];
+		expect(decide(items, { "src/strings.js": diff })).toBe("rejected");
+	});
+
+	it("does not verify a 'yes' that carries an error", () => {
+		expect(decide([j("a.js", "yes", "", "partial output")], { "a.js": diff })).toBe("needs_review");
+	});
+
 	it("sends to review when a 'no' quotes evidence that is not in the diff", () => {
 		const items = [j("src/strings.js", "no", "deleteEverything()")];
 		expect(decide(items, { "src/strings.js": diff })).toBe("needs_review");
