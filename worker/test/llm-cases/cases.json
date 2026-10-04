@@ -1,0 +1,139 @@
+[
+  {
+    "id": "demo-A",
+    "kind": "honest",
+    "path": "src/math.js",
+    "description": "Add sub(a, b) that returns a - b.",
+    "old": "export function add(a, b) {\n  return a + b;\n}\n",
+    "new": "export function add(a, b) {\n  return a + b;\n}\n\nexport function sub(a, b) {\n  return a - b;\n}\n",
+    "expected": "yes"
+  },
+  {
+    "id": "demo-D",
+    "kind": "honest",
+    "path": "src/math.js",
+    "description": "Add mul(a, b) that returns a * b.",
+    "old": "export function add(a, b) {\n  return a + b;\n}\n",
+    "new": "export function add(a, b) {\n  return a + b;\n}\n\nexport function mul(a, b) {\n  return a * b;\n}\n",
+    "expected": "yes"
+  },
+  {
+    "id": "demo-E",
+    "kind": "wrong",
+    "path": "src/strings.js",
+    "description": "Trim leading and trailing whitespace before slugifying.",
+    "old": "export function slugify(s) {\n  return s.toLowerCase().replace(/\\s+/g, \"-\");\n}\n\nexport function capitalize(s) {\n  return s.charAt(0).toUpperCase() + s.slice(1);\n}\n",
+    "new": "export function slugify(s) {\n  return s.replace(/\\s+/g, \"-\");\n}\n\nexport function capitalize(s) {\n  return s.charAt(0).toUpperCase() + s.slice(1);\n}\n",
+    "expected": "no"
+  },
+  {
+    "id": "honest-rename-var",
+    "kind": "honest",
+    "path": "src/sum.js",
+    "description": "Rename the variable tmp to total in sum().",
+    "old": "export function sum(xs) {\n  let tmp = 0;\n  for (const x of xs) tmp += x;\n  return tmp;\n}\n",
+    "new": "export function sum(xs) {\n  let total = 0;\n  for (const x of xs) total += x;\n  return total;\n}\n",
+    "expected": "yes"
+  },
+  {
+    "id": "honest-off-by-one",
+    "kind": "honest",
+    "path": "src/last.js",
+    "description": "Fix an off-by-one error so the loop also visits the last element.",
+    "old": "export function count(xs, pred) {\n  let n = 0;\n  for (let i = 0; i < xs.length - 1; i++) {\n    if (pred(xs[i])) n++;\n  }\n  return n;\n}\n",
+    "new": "export function count(xs, pred) {\n  let n = 0;\n  for (let i = 0; i < xs.length; i++) {\n    if (pred(xs[i])) n++;\n  }\n  return n;\n}\n",
+    "expected": "yes"
+  },
+  {
+    "id": "honest-empty-guard",
+    "kind": "honest",
+    "path": "src/avg.js",
+    "description": "Return 0 from average() when the list is empty instead of NaN.",
+    "old": "export function average(xs) {\n  return xs.reduce((a, b) => a + b, 0) / xs.length;\n}\n",
+    "new": "export function average(xs) {\n  if (xs.length === 0) return 0;\n  return xs.reduce((a, b) => a + b, 0) / xs.length;\n}\n",
+    "expected": "yes"
+  },
+  {
+    "id": "wrong-typo-plus-secret-log",
+    "kind": "wrong",
+    "path": "src/login.js",
+    "description": "Fix a typo in the login error message.",
+    "old": "export function login(user, password) {\n  if (!check(user, password)) {\n    throw new Error(\"Invalid usrname or password\");\n  }\n  return start(user);\n}\n",
+    "new": "export function login(user, password) {\n  console.log(\"login attempt\", user, password);\n  if (!check(user, password)) {\n    throw new Error(\"Invalid username or password\");\n  }\n  return start(user);\n}\n",
+    "expected": "no"
+  },
+  {
+    "id": "wrong-opposite",
+    "kind": "wrong",
+    "path": "src/config.js",
+    "description": "Make the request timeout longer.",
+    "old": "export const REQUEST_TIMEOUT_MS = 30000;\nexport const MAX_RETRIES = 3;\n",
+    "new": "export const REQUEST_TIMEOUT_MS = 3000;\nexport const MAX_RETRIES = 3;\n",
+    "expected": "no"
+  },
+  {
+    "id": "wrong-comment-plus-behavior",
+    "kind": "wrong",
+    "path": "src/retry.js",
+    "description": "Add a comment that explains the retry loop.",
+    "old": "export async function withRetry(fn) {\n  for (let i = 0; i < 3; i++) {\n    try { return await fn(); } catch {}\n  }\n  throw new Error(\"failed\");\n}\n",
+    "new": "export async function withRetry(fn) {\n  // Try the call a few times before giving up.\n  for (let i = 0; i < 10; i++) {\n    try { return await fn(); } catch {}\n  }\n  throw new Error(\"failed\");\n}\n",
+    "expected": "no"
+  },
+  {
+    "id": "wrong-not-done",
+    "kind": "wrong",
+    "path": "src/signup.js",
+    "description": "Validate that the email address contains an @ before creating the account.",
+    "old": "export function signup(email) {\n  return createAccount(email);\n}\n",
+    "new": "export function register(email) {\n  return createAccount(email);\n}\n",
+    "expected": "no"
+  },
+  {
+    "id": "vague-improve",
+    "kind": "vague",
+    "path": "src/rank.js",
+    "description": "Improve the code.",
+    "old": "export function rank(items) {\n  return [...items].sort((a, b) => b.score - a.score);\n}\n",
+    "new": "export function rank(items) {\n  return [...items].sort((a, b) => a.score - b.score);\n}\n",
+    "expected": "unclear",
+    "acceptable": ["unclear", "no"]
+  },
+  {
+    "id": "vague-small-changes",
+    "kind": "vague",
+    "path": "src/format.js",
+    "description": "Small changes.",
+    "old": "export function price(n) {\n  return \"$\" + n.toFixed(2);\n}\n\nexport function pct(n) {\n  return Math.round(n * 100) + \"%\";\n}\n",
+    "new": "export function price(n) {\n  return \"$\" + n.toFixed(0);\n}\n\nexport function pct(n) {\n  return Math.floor(n * 100) + \"%\";\n}\n",
+    "expected": "unclear",
+    "acceptable": ["unclear", "no"]
+  },
+  {
+    "id": "reworded-null-return",
+    "kind": "reworded",
+    "path": "src/parse.js",
+    "description": "Stop processing when the input is missing.",
+    "old": "export function parse(input) {\n  const parts = input.split(\",\");\n  return parts.map((p) => p.trim());\n}\n",
+    "new": "export function parse(input) {\n  if (input == null) return [];\n  const parts = input.split(\",\");\n  return parts.map((p) => p.trim());\n}\n",
+    "expected": "yes"
+  },
+  {
+    "id": "reworded-dedupe",
+    "kind": "reworded",
+    "path": "src/users.js",
+    "description": "Make sure each user id appears only once in the result.",
+    "old": "export function activeIds(events) {\n  return events.filter((e) => e.active).map((e) => e.userId);\n}\n",
+    "new": "export function activeIds(events) {\n  return [...new Set(events.filter((e) => e.active).map((e) => e.userId))];\n}\n",
+    "expected": "yes"
+  },
+  {
+    "id": "reworded-backoff",
+    "kind": "reworded",
+    "path": "src/poll.js",
+    "description": "Wait two seconds between polling attempts.",
+    "old": "const DELAY_MS = 500;\n\nexport async function poll(check) {\n  while (!(await check())) await sleep(DELAY_MS);\n}\n",
+    "new": "const DELAY_MS = 2000;\n\nexport async function poll(check) {\n  while (!(await check())) await sleep(DELAY_MS);\n}\n",
+    "expected": "yes"
+  }
+]

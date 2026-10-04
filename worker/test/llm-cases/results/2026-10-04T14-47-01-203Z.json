@@ -1,0 +1,528 @@
+{
+  "summary": {
+    "model": "@cf/qwen/qwen3.8-27b",
+    "runs": 5,
+    "calls": 76,
+    "judgements": 75,
+    "correct": 75,
+    "flakyCases": [],
+    "flakeRate": 0,
+    "neurons": 6049.622467041016,
+    "usd": 0.06654584713745117,
+    "avgPromptTokens": 287.11842105263156,
+    "avgCompletionTokens": 233.25,
+    "avgMs": 8429.8
+  },
+  "rows": [
+    {
+      "id": "demo-A",
+      "kind": "honest",
+      "expected": "yes",
+      "answers": [
+        "yes",
+        "yes",
+        "yes",
+        "yes",
+        "yes"
+      ],
+      "verdicts": [
+        "verified",
+        "verified",
+        "verified",
+        "verified",
+        "verified"
+      ],
+      "evidenceOk": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "errors": [],
+      "ms": [
+        3329,
+        3294,
+        3205,
+        3164,
+        4556
+      ]
+    },
+    {
+      "id": "demo-D",
+      "kind": "honest",
+      "expected": "yes",
+      "answers": [
+        "yes",
+        "yes",
+        "yes",
+        "yes",
+        "yes"
+      ],
+      "verdicts": [
+        "verified",
+        "verified",
+        "verified",
+        "verified",
+        "verified"
+      ],
+      "evidenceOk": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "errors": [],
+      "ms": [
+        2842,
+        2788,
+        3344,
+        2733,
+        2736
+      ]
+    },
+    {
+      "id": "demo-E",
+      "kind": "wrong",
+      "expected": "no",
+      "answers": [
+        "no",
+        "no",
+        "no",
+        "no",
+        "no"
+      ],
+      "verdicts": [
+        "rejected",
+        "rejected",
+        "rejected",
+        "rejected",
+        "rejected"
+      ],
+      "evidenceOk": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "errors": [],
+      "ms": [
+        24384,
+        6483,
+        6763,
+        4830,
+        6466
+      ]
+    },
+    {
+      "id": "honest-rename-var",
+      "kind": "honest",
+      "expected": "yes",
+      "answers": [
+        "yes",
+        "yes",
+        "yes",
+        "yes",
+        "yes"
+      ],
+      "verdicts": [
+        "verified",
+        "verified",
+        "verified",
+        "verified",
+        "verified"
+      ],
+      "evidenceOk": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "errors": [],
+      "ms": [
+        3287,
+        4269,
+        3977,
+        4899,
+        20204
+      ]
+    },
+    {
+      "id": "honest-off-by-one",
+      "kind": "honest",
+      "expected": "yes",
+      "answers": [
+        "yes",
+        "yes",
+        "yes",
+        "yes",
+        "yes"
+      ],
+      "verdicts": [
+        "verified",
+        "verified",
+        "verified",
+        "verified",
+        "verified"
+      ],
+      "evidenceOk": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "errors": [],
+      "ms": [
+        5285,
+        9762,
+        4970,
+        6260,
+        8657
+      ]
+    },
+    {
+      "id": "honest-empty-guard",
+      "kind": "honest",
+      "expected": "yes",
+      "answers": [
+        "yes",
+        "yes",
+        "yes",
+        "yes",
+        "yes"
+      ],
+      "verdicts": [
+        "verified",
+        "verified",
+        "verified",
+        "verified",
+        "verified"
+      ],
+      "evidenceOk": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "errors": [],
+      "ms": [
+        38946,
+        4815,
+        5335,
+        4865,
+        4438
+      ]
+    },
+    {
+      "id": "wrong-typo-plus-secret-log",
+      "kind": "wrong",
+      "expected": "no",
+      "answers": [
+        "no",
+        "no",
+        "no",
+        "no",
+        "no"
+      ],
+      "verdicts": [
+        "rejected",
+        "rejected",
+        "rejected",
+        "rejected",
+        "rejected"
+      ],
+      "evidenceOk": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "errors": [],
+      "ms": [
+        3664,
+        3740,
+        4353,
+        5471,
+        4212
+      ]
+    },
+    {
+      "id": "wrong-opposite",
+      "kind": "wrong",
+      "expected": "no",
+      "answers": [
+        "no",
+        "no",
+        "no",
+        "no",
+        "no"
+      ],
+      "verdicts": [
+        "rejected",
+        "rejected",
+        "rejected",
+        "rejected",
+        "rejected"
+      ],
+      "evidenceOk": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "errors": [],
+      "ms": [
+        4146,
+        15291,
+        3068,
+        4138,
+        4175
+      ]
+    },
+    {
+      "id": "wrong-comment-plus-behavior",
+      "kind": "wrong",
+      "expected": "no",
+      "answers": [
+        "no",
+        "no",
+        "no",
+        "no",
+        "no"
+      ],
+      "verdicts": [
+        "rejected",
+        "rejected",
+        "rejected",
+        "rejected",
+        "rejected"
+      ],
+      "evidenceOk": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "errors": [],
+      "ms": [
+        5960,
+        5536,
+        5661,
+        6688,
+        5130
+      ]
+    },
+    {
+      "id": "wrong-not-done",
+      "kind": "wrong",
+      "expected": "no",
+      "answers": [
+        "no",
+        "no",
+        "no",
+        "no",
+        "no"
+      ],
+      "verdicts": [
+        "rejected",
+        "rejected",
+        "rejected",
+        "rejected",
+        "rejected"
+      ],
+      "evidenceOk": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "errors": [],
+      "ms": [
+        3444,
+        2780,
+        15847,
+        2787,
+        2741
+      ]
+    },
+    {
+      "id": "vague-improve",
+      "kind": "vague",
+      "expected": "unclear",
+      "answers": [
+        "no",
+        "no",
+        "no",
+        "no",
+        "no"
+      ],
+      "verdicts": [
+        "rejected",
+        "rejected",
+        "rejected",
+        "rejected",
+        "rejected"
+      ],
+      "evidenceOk": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "errors": [],
+      "ms": [
+        5858,
+        7185,
+        7243,
+        24069,
+        5737
+      ]
+    },
+    {
+      "id": "vague-small-changes",
+      "kind": "vague",
+      "expected": "unclear",
+      "answers": [
+        "no",
+        "no",
+        "no",
+        "no",
+        "no"
+      ],
+      "verdicts": [
+        "rejected",
+        "rejected",
+        "rejected",
+        "rejected",
+        "rejected"
+      ],
+      "evidenceOk": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "errors": [],
+      "ms": [
+        23295,
+        10812,
+        43392,
+        9836,
+        10821
+      ]
+    },
+    {
+      "id": "reworded-null-return",
+      "kind": "reworded",
+      "expected": "yes",
+      "answers": [
+        "yes",
+        "yes",
+        "yes",
+        "yes",
+        "yes"
+      ],
+      "verdicts": [
+        "verified",
+        "verified",
+        "verified",
+        "verified",
+        "verified"
+      ],
+      "evidenceOk": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "errors": [],
+      "ms": [
+        28340,
+        7793,
+        8488,
+        8291,
+        9239
+      ]
+    },
+    {
+      "id": "reworded-dedupe",
+      "kind": "reworded",
+      "expected": "yes",
+      "answers": [
+        "yes",
+        "yes",
+        "yes",
+        "yes",
+        "yes"
+      ],
+      "verdicts": [
+        "verified",
+        "verified",
+        "verified",
+        "verified",
+        "verified"
+      ],
+      "evidenceOk": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "errors": [],
+      "ms": [
+        4853,
+        20048,
+        3953,
+        4852,
+        5203
+      ]
+    },
+    {
+      "id": "reworded-backoff",
+      "kind": "reworded",
+      "expected": "yes",
+      "answers": [
+        "yes",
+        "yes",
+        "yes",
+        "yes",
+        "yes"
+      ],
+      "verdicts": [
+        "verified",
+        "verified",
+        "verified",
+        "verified",
+        "verified"
+      ],
+      "evidenceOk": [
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "errors": [],
+      "ms": [
+        45950,
+        5156,
+        4122,
+        4548,
+        3433
+      ]
+    }
+  ]
+}
