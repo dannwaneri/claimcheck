@@ -136,6 +136,14 @@ describe("diffCommits", () => {
 		expect((await diffCommits(r, b, h)).map((c) => c.path)).toEqual(["README.md", "src/auth/session.js", "src/strings.js"]);
 	});
 
+	it("counts a binary file change as one line, not as text", async () => {
+		const r = new FakeRepo();
+		const b = r.commit("base", base);
+		const h = r.commit("head", { ...base, "img/logo.png": "\x89PNG\x00\x01\x02\nmore\x00bytes\nand\nmore\n" });
+		const [c] = await diffCommits(r, b, h);
+		expect(c).toMatchObject({ path: "img/logo.png", status: "added", additions: 1, deletions: 0 });
+	});
+
 	it("throws when a commit is missing", async () => {
 		const r = new FakeRepo();
 		const b = r.commit("base", base);
