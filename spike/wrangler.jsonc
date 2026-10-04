@@ -1,0 +1,26 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "claimcheck-spike",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "artifacts": [
+    { "binding": "ARTIFACTS", "namespace": "claimcheck-spike" }
+  ],
+  "workflows": [
+    { "name": "claimcheck-spike-push", "binding": "PUSH_WF", "class_name": "PushWorkflow" }
+  ],
+  "triggers": {
+    "events": [
+      {
+        "type": "cf.artifacts.repo.pushed",
+        // No repoName: every push to any repo in the namespace starts the Workflow.
+        // This is what lets forks created at runtime be covered without a new subscription.
+        // Note: the docs example uses `target`/`repoName`; Wrangler 4.147 wants `targets[]`/`repo_name`.
+        "filter": { "namespace": "claimcheck-spike" },
+        "targets": [{ "type": "workflow", "workflow_name": "claimcheck-spike-push" }]
+      }
+    ]
+  },
+  "observability": { "enabled": true, "logs": { "enabled": true } }
+}
