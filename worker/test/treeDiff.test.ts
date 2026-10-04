@@ -136,6 +136,24 @@ describe("diffCommits", () => {
 		expect((await diffCommits(r, b, h)).map((c) => c.path)).toEqual(["README.md", "src/auth/session.js", "src/strings.js"]);
 	});
 
+	it("shows a rename as a delete plus an add (no rename detection)", async () => {
+		const r = new FakeRepo();
+		const b = r.commit("base", base);
+		const { ["src/math.js"]: math, ...rest } = base;
+		const h = r.commit("head", { ...rest, "src/arith.js": math });
+		expect((await diffCommits(r, b, h)).map((c) => [c.path, c.status])).toEqual([
+			["src/arith.js", "added"],
+			["src/math.js", "deleted"],
+		]);
+	});
+
+	it("treats paths that differ only in letter case as different files", async () => {
+		const r = new FakeRepo();
+		const b = r.commit("base", base);
+		const h = r.commit("head", { ...base, "src/Auth/session.js": "export const check = () => false;\n" });
+		expect((await diffCommits(r, b, h)).map((c) => [c.path, c.status])).toEqual([["src/Auth/session.js", "added"]]);
+	});
+
 	it("counts a binary file change as one line, not as text", async () => {
 		const r = new FakeRepo();
 		const b = r.commit("base", base);

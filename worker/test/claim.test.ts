@@ -27,6 +27,12 @@ describe("parseClaim", () => {
 		if (r.ok) expect(r.claim).toEqual(valid);
 	});
 
+	it("drops extra fields, so a fork cannot send its own policy through the claim", () => {
+		const r = parse({ ...valid, policy: { protectedPaths: [] }, protectedPaths: [] });
+		expect(r.ok).toBe(true);
+		if (r.ok) expect(Object.keys(r.claim).sort()).toEqual(["agent_id", "changes", "scope", "summary", "task_id"]);
+	});
+
 	it("rejects a missing claim file", () => {
 		const r = parseClaim(null, expected);
 		expect(r.ok).toBe(false);

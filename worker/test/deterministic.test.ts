@@ -127,6 +127,34 @@ describe("checkDeterministic", () => {
 		});
 	});
 
+	describe("rename, letter case, empty diff", () => {
+		it("accepts a rename when both old and new paths are claimed", () => {
+			const changes = [change("src/old.js", 0, 3, "deleted"), change("src/new.js", 3, 0, "added")];
+			expect(checkDeterministic(claim(["src/new.js", "src/old.js"]), changes, DEFAULT_POLICY)).toEqual([]);
+		});
+
+		it("flags the old path when a rename claims only the new path", () => {
+			const changes = [change("src/old.js", 0, 3, "deleted"), change("src/new.js", 3, 0, "added")];
+			const f = checkDeterministic(claim(["src/new.js"]), changes, DEFAULT_POLICY);
+			expect(f).toEqual([expect.objectContaining({ code: "UNCLAIMED_CHANGE", path: "src/old.js" })]);
+		});
+
+		it("treats claim paths as case-sensitive, like git", () => {
+			const f = checkDeterministic(claim(["src/Math.js"]), [change("src/math.js")], DEFAULT_POLICY);
+			expect(codes(f)).toEqual(["CLAIMED_NOT_CHANGED", "UNCLAIMED_CHANGE"]);
+		});
+
+		it("matches protected paths in any letter case (src/Auth == src/auth on macOS/Windows checkouts)", () => {
+			const f = checkDeterministic(claim(["src/Auth/session.js"]), [change("src/Auth/session.js")], DEFAULT_POLICY);
+			expect(codes(f)).toEqual(["PROTECTED_PATH"]);
+		});
+
+		it("rejects an empty diff with a non-empty claim (Agent C case)", () => {
+			const f = checkDeterministic(claim(["src/strings.js"]), [], DEFAULT_POLICY);
+			expect(codes(f)).toEqual(["CLAIMED_NOT_CHANGED"]);
+		});
+	});
+
 	it("reports every problem at once, not just the first", () => {
 		const policy: Policy = { ...DEFAULT_POLICY, maxLines: 5 };
 		const f = checkDeterministic(claim(["src/strings.js", "src/math.js"]), [change("src/strings.js", 3), change("src/auth/session.js", 3)], policy);

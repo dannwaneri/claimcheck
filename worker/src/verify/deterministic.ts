@@ -3,7 +3,7 @@ import { CLAIM_DIR, type FileChange, type Finding, type Policy } from "./types";
 
 // "**/" matches zero or more folders; a trailing "**" matches one or more path chars.
 // "*" and "?" stay inside one segment.
-export function matchesGlob(path: string, glob: string): boolean {
+export function matchesGlob(path: string, glob: string, opts: { ignoreCase?: boolean } = {}): boolean {
 	let re = "";
 	for (let i = 0; i < glob.length; i++) {
 		const ch = glob[i];
@@ -17,7 +17,7 @@ export function matchesGlob(path: string, glob: string): boolean {
 		else if (ch === "?") re += "[^/]";
 		else re += ch.replace(/[.+^${}()|[\]\\]/g, "\\$&");
 	}
-	return new RegExp(`^${re}$`).test(path);
+	return new RegExp(`^${re}$`, opts.ignoreCase ? "i" : "").test(path);
 }
 
 export function checkDeterministic(claim: Claim, changes: FileChange[], policy: Policy): Finding[] {
@@ -30,7 +30,8 @@ export function checkDeterministic(claim: Claim, changes: FileChange[], policy: 
 		if (!claimed.has(c.path)) {
 			findings.push({ code: "UNCLAIMED_CHANGE", path: c.path, detail: `${c.path} was ${c.status} but is not in scope.paths` });
 		}
-		const hit = policy.protectedPaths.find((g) => matchesGlob(c.path, g));
+		// Case-insensitive: src/Auth/x.js lands in src/auth/ on macOS and Windows checkouts.
+		const hit = policy.protectedPaths.find((g) => matchesGlob(c.path, g, { ignoreCase: true }));
 		if (hit) {
 			findings.push({ code: "PROTECTED_PATH", path: c.path, detail: `${c.path} matches protected path ${hit}` });
 		}

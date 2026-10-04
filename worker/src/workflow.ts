@@ -29,11 +29,15 @@ export class VerifyWorkflow extends WorkflowEntrypoint<Env, PushEvent> {
 		if (fork === this.env.CANON_REPO) return { skipped: "push to canon (our own merge)" };
 
 		const ctx = await step.do("look up fork", async () => {
-			const r = await repoStub(this.env).lookupFork(fork);
+			const r = await repoStub(this.env).lookupFork(fork, commit);
 			// Copy out of the RPC result so the step returns plain data.
-			return r ? { task_id: r.task_id, agent_id: r.agent_id, base: r.base, policy: { ...r.policy, protectedPaths: [...r.policy.protectedPaths] } } : null;
+			return r
+				? { task_id: r.task_id, agent_id: r.agent_id, base: r.base, alreadyJudged: r.alreadyJudged, policy: { ...r.policy, protectedPaths: [...r.policy.protectedPaths] } }
+				: null;
 		});
 		if (!ctx) return { skipped: `${fork} is not a claimcheck agent fork` };
+		// Same push event delivered twice: the verdict for (fork, commit) already exists.
+		if (ctx.alreadyJudged) return { skipped: `${fork}@${commit} already has a verdict` };
 
 		const data = await step.do("read claim and diff", async () => {
 			using repo = await this.env.ARTIFACTS.get(fork);
@@ -69,7 +73,6 @@ export class VerifyWorkflow extends WorkflowEntrypoint<Env, PushEvent> {
 
 		await step.do("record verdict", () =>
 			repoStub(this.env).recordVerdict({
-				id: event.instanceId,
 				task_id: ctx.task_id,
 				agent_id: ctx.agent_id,
 				fork,

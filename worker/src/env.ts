@@ -6,6 +6,7 @@ export interface Env {
 	REPO_DO: DurableObjectNamespace<RepoDO>;
 	CANON_REPO: string;
 	LLM_MODEL: string;
+	CLAIMCHECK_SECRET?: string; // Worker secret; required by POST /canon, /tasks, /reset
 }
 
 // No fallback: without the real binding, fail loudly.
