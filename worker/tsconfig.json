@@ -7,7 +7,7 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": []
+    "types": ["./worker-configuration.d.ts"]
   },
   "include": ["src/**/*.ts", "test/**/*.ts"]
 }
