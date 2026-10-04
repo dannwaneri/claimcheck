@@ -7,6 +7,8 @@ interface Env {
 	PUSH_WF: Workflow;
 }
 
+import { diffCommits } from "../../worker/src/diff";
+
 const CANON = "canon";
 
 function requireBinding(env: Env) {
@@ -48,13 +50,19 @@ export default {
 			return f ? new Response(await f.text()) : new Response("null", { status: 404 });
 		}
 
+		// Diff two commits with the real worker diff code.
+		if (req.method === "GET" && url.pathname === "/diff") {
+			using repo = await env.ARTIFACTS.get(url.searchParams.get("repo")!);
+			return Response.json(await diffCommits(repo, url.searchParams.get("base")!, url.searchParams.get("head")!));
+		}
+
 		// Inspect a Workflow instance by id.
 		if (req.method === "GET" && url.pathname === "/instance") {
 			const inst = await env.PUSH_WF.get(url.searchParams.get("id")!);
 			return Response.json(await inst.status());
 		}
 
-		return new Response("POST /canon | POST /fork?name= | GET /file?repo=&ref=&path= | GET /instance?id=", { status: 404 });
+		return new Response("POST /canon | POST /fork?name= | GET /file?repo=&ref=&path= | GET /diff?repo=&base=&head= | GET /instance?id=", { status: 404 });
 	},
 } satisfies ExportedHandler<Env>;
 

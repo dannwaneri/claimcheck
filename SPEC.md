@@ -206,7 +206,7 @@ claimcheck/
 
 - The verifier, merge queue, and dashboard are not built. Only the spike exists.
 - No Qwen call has been made yet. JSON reliability and evidence quality are unknown.
-- I did not test a push of a **deleted** file or a **new directory** through `readTree`. I expect it to work, but it is not proved.
+- ~~Deleted file / new directory through `readTree`~~ — proved 2026-10-04: `diffCommits` on the real `agent-a` fork matched `git diff --numstat` exactly (delete, nested add, replaced line).
 - I did not test isomorphic-git push from a Worker to canon. The Cloudflare docs show it works; our spike did not do it.
 - `event.payload` shape: proved for one push. I did not test a push with many commits or a force push.
 - The spike namespace `claimcheck-spike` still holds repos `canon` and `agent-a`, and the `claimcheck-spike` Worker is deployed. Billing for Artifacts starts 2026-10-14. I will delete them after the real Worker works, unless you want them kept.
