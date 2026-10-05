@@ -15,7 +15,7 @@ export function findConflicts(agentChanges: FileChange[], canonChanges: FileChan
 
 export interface ApplyInput {
 	remote: string;
-	token: string; // full token, "art_v1_<secret>?expires=..."
+	token: string; // full token, "art_v<N>_<secret>?expires=..."
 	expectedHead: string;
 	changes: FileChange[];
 	readBlob: (hash: string) => Promise<Uint8Array>;

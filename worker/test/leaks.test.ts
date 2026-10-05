@@ -8,7 +8,8 @@ import type { Env } from "../src/env";
 import { sqlite } from "./helpers/sqlite";
 
 const SECRET = "shared-secret-value-123";
-const tok = (name: string) => `art_v1_${name.padEnd(40, "0")}?expires=1999999999`;
+// Real tokens seen: art_v1_<hex>?expires=... and (since 2026-10-05) art_v2_x_<hex>?expires=...
+const tok = (name: string) => `art_v2_x_${name.padEnd(40, "0")}?expires=1999999999`;
 const remote = (name: string) => `https://acct.artifacts.cloudflare.net/git/claimcheck/${name}.git`;
 
 function makeEnv() {
@@ -38,7 +39,7 @@ const req = (method: string, path: string, body?: unknown) =>
 	});
 
 function assertNoSecrets(text: string, tokens: string[]) {
-	expect(text).not.toContain("art_v1_");
+	expect(text).not.toMatch(/art_v\d+_/);
 	expect(text).not.toContain(SECRET);
 	for (const t of tokens) expect(text).not.toContain(t.split("?")[0]);
 	expect(text).not.toMatch(/https:\/\/[^\/\s"]*:[^@\s"]*@/); // user:password@host
@@ -51,7 +52,7 @@ describe("GET routes do not leak secrets", () => {
 		expect(created.status).toBe(201);
 		const tokens: string[] = (await created.json<any>()).agents.map((a: any) => a.token);
 		expect(tokens).toHaveLength(5);
-		expect(tokens[0]).toContain("art_v1_"); // the write route does return tokens; that is its job
+		expect(tokens[0]).toMatch(/^art_v\d+_/); // the write route does return tokens; that is its job
 
 		// A verdict and a merge error, so every dashboard section renders.
 		store.recordVerdict({

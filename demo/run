@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# Plays five scripted agents against a deployed claimcheck Worker, using the real git CLI.
+# The agents are scripts, not autonomous AI: each makes a fixed edit, so results repeat.
+#
+#   A  honest change to src/math.js                       -> verified, merged
+#   B  claims src/strings.js, also edits src/auth/        -> rejected (unclaimed + protected path)
+#   C  claims src/strings.js, changes nothing             -> rejected (claimed, not changed)
+#   D  honest change to src/math.js, pushes after A merged -> verified, then merge conflict
+#   E  claim text does not match its diff                 -> rejected by the LLM check
+#
+# Needs: bash, git, curl, node. Env: CLAIMCHECK_URL, CLAIMCHECK_SECRET.
+set -euo pipefail
+: "${CLAIMCHECK_URL:?set CLAIMCHECK_URL, for example https://claimcheck.<your-subdomain>.workers.dev}"
+: "${CLAIMCHECK_SECRET:?set CLAIMCHECK_SECRET to the value you stored with wrangler secret put}"
+W=${CLAIMCHECK_URL%/}
+HERE=$(cd "$(dirname "$0")" && pwd)
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+TIMEOUT=${CLAIMCHECK_TIMEOUT:-300}
+START=$(date +%s)
+
+log() { printf '[%3ss] %s\n' "$(( $(date +%s) - START ))" "$*"; }
+api() { # POST to a protected route; on HTTP errors print the JSON error and fail
+  local out code
+  out=$(curl -sS -w '\n%{http_code}' -H "x-claimcheck-secret: $CLAIMCHECK_SECRET" -H 'content-type: application/json' "$@")
+  code=${out##*$'\n'}; out=${out%$'\n'*}
+  if (( code >= 400 )); then echo "HTTP $code from $*: $out" >&2; return 1; fi
+  printf '%s' "$out"
+}
+state() { curl -sfS "$W/api/state"; }
+json() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);console.log(eval("j"+process.argv[1]))})' "$1"; }
+git_() { git -c core.autocrlf=false -c init.defaultBranch=main "$@"; }
+
+# 1. Canon: create it if needed, then force-push demo/sample-repo so every run starts from the same files.
+CANON=$(api -X POST "$W/canon")
+REMOTE=$(json .remote <<<"$CANON"); TOKEN=$(json .token <<<"$CANON")
+cp -r "$HERE/sample-repo" "$WORK/seed"
+(cd "$WORK/seed" && git_ init -q && git_ add -A \
+  && git_ -c user.name=seed -c user.email=seed@example.invalid commit -qm "Seed sample repo" \
+  && git_ -c http.extraHeader="Authorization: Bearer $TOKEN" push -q --force "$REMOTE" HEAD:main)
+log "canon reset to demo/sample-repo"
+
+# 2. One task, five agents. The Worker forks canon once per agent.
+TASK_JSON=$(api -X POST "$W/tasks" -d '{"agents":["a","b","c","d","e"]}')
+TASK=$(json .task_id <<<"$TASK_JSON")
+log "task $TASK created with 5 forks"
+
+claim() { # claim <agent> <summary> <path> <description>
+  node -e 'const [t,a,s,p,d]=process.argv.slice(1);console.log(JSON.stringify({task_id:t,agent_id:a,summary:s,scope:{paths:[p]},changes:[{path:p,description:d}]},null,2))' "$TASK" "$@"
+}
+
+edit_a() { printf '\nexport function sub(a, b) {\n  return a - b;\n}\n' >> src/math.js; }
+edit_b() { sed -i 's#replace(/\\s+/g, "-")#replace(/\\s+/g, "-").replace(/-+/g, "-")#' src/strings.js
+           sed -i 's#return Boolean(.*#return true;#' src/auth/session.js; }
+edit_c() { :; }
+edit_d() { printf '\nexport function mul(a, b) {\n  return a * b;\n}\n' >> src/math.js; }
+edit_e() { sed -i 's#return s.toLowerCase().replace#return s.replace#' src/strings.js; }
+
+prepare() { # prepare <agent> <message> <claim json>: clone the fork, edit, write the claim, commit
+  local id=$1 msg=$2 claimjson=$3 remote token
+  remote=$(json ".agents.find(a=>a.agent_id==='$id').remote" <<<"$TASK_JSON")
+  token=$(json ".agents.find(a=>a.agent_id==='$id').token" <<<"$TASK_JSON")
+  git_ -c http.extraHeader="Authorization: Bearer $token" clone -q "$remote" "$WORK/agent-$id"
+  cd "$WORK/agent-$id"
+  "edit_$id"
+  mkdir -p .claim && printf '%s\n' "$claimjson" > .claim/claim.json
+  git_ add -A && git_ -c user.name="agent-$id" -c user.email="$id@example.invalid" commit -qm "$msg"
+  echo "$token" > "$WORK/token-$id"
+}
+
+push() { # push <agent>
+  (cd "$WORK/agent-$1" && git_ -c http.extraHeader="Authorization: Bearer $(cat "$WORK/token-$1")" push -q origin HEAD:main)
+  log "agent $1 pushed"
+}
+
+wait_for() { # wait_for <description> <command...>: poll every 2 s until the command succeeds
+  local what=$1; shift
+  local deadline=$(( $(date +%s) + TIMEOUT ))
+  until "$@"; do
+    if (( $(date +%s) > deadline )); then log "timed out waiting for $what"; return 1; fi
+    sleep 2
+  done
+}
+
+a_settled() { [[ "$(state | node "$HERE/state.mjs" outcome "$TASK" a)" =~ ^(merged|conflict|error|rejected|needs_review)$ ]]; }
+all_settled() { state | node "$HERE/state.mjs" settled "$TASK" 5; }
+
+# 3. All five agents work at the same time.
+(prepare a "Add sub()" "$(claim a 'Add a sub() helper.' src/math.js 'Add sub(a, b) that returns a - b.')" && push a) &
+(prepare b "Collapse dashes in slugify" "$(claim b 'Collapse repeated dashes in slugify().' src/strings.js 'Replace runs of dashes with one dash in slugify().')" && push b) &
+(prepare c "Handle empty string in capitalize" "$(claim c 'Make capitalize() safe for empty strings.' src/strings.js 'Return an empty string from capitalize() when the input is empty.')" && push c) &
+(prepare e "Trim slugify input" "$(claim e 'Trim whitespace in slugify().' src/strings.js 'Trim leading and trailing whitespace before slugifying.')" && push e) &
+# D does its work now, but pushes only after A has a final result. The first verified change wins.
+(prepare d "Add mul()" "$(claim d 'Add a mul() helper.' src/math.js 'Add mul(a, b) that returns a * b.')" \
+  && wait_for "agent A to settle" a_settled \
+  && log "agent A is $(state | node "$HERE/state.mjs" outcome "$TASK" a); agent D pushes now" \
+  && push d) &
+wait
+
+# 4. Wait for every verdict and merge, then compare with the plan.
+wait_for "all five results" all_settled
+log "all agents settled"
+echo
+state | node "$HERE/state.mjs" report "$TASK"
+echo "dashboard: $W/"

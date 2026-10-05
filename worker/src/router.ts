@@ -31,7 +31,8 @@ async function createCanon(env: Env) {
 		const info = await repo.info();
 		const token = await repo.createToken("write", 3600);
 		return { created: false, name: info.name, remote: info.remote, token: token.plaintext };
-	} catch {
+	} catch (e) {
+		if ((e as { code?: string }).code !== "NOT_FOUND") throw e;
 		const created = await env.ARTIFACTS.create(env.CANON_REPO, { setDefaultBranch: "main" });
 		return { created: true, name: created.name, remote: created.remote, token: created.token };
 	}
@@ -63,14 +64,16 @@ async function createTask(env: Env, body: { agents?: unknown; policy?: Partial<P
 	return Response.json({ task_id: id, base: head.hash, policy, agents: forks }, { status: 201 });
 }
 
-// Clean slate for a demo take: clear RepoDO, then delete every repo in the namespace.
+// Clean slate for a demo take: clear RepoDO, then delete every agent fork in the namespace.
+// Canon is kept: recreating a just-deleted repo name failed with ALREADY_EXISTS / INTERNAL_ERROR
+// in testing. demo/run force-pushes the seed to canon instead.
 async function reset(env: Env) {
 	await repoStub(env).reset();
 	const names: string[] = [];
 	let cursor: string | undefined;
 	do {
 		const page = await env.ARTIFACTS.list({ limit: 100, cursor });
-		names.push(...page.repos.map((r) => r.name));
+		names.push(...page.repos.map((r) => r.name).filter((n) => n !== env.CANON_REPO));
 		cursor = page.cursor ?? undefined;
 	} while (cursor);
 	const results = await Promise.all(names.map(async (n) => [n, await env.ARTIFACTS.delete(n)] as const));
@@ -79,6 +82,16 @@ async function reset(env: Env) {
 
 export async function handle(req: Request, env: Env): Promise<Response> {
 	requireArtifacts(env);
+	try {
+		return await route(req, env);
+	} catch (e) {
+		// Surface Artifacts errors (they carry a code such as NOT_FOUND or ALREADY_EXISTS) instead of a bare 500.
+		const err = e as { message?: string; code?: string };
+		return Response.json({ error: err.message ?? String(e), code: err.code ?? null }, { status: 500 });
+	}
+}
+
+async function route(req: Request, env: Env): Promise<Response> {
 	const url = new URL(req.url);
 
 	if (req.method === "GET" && url.pathname === "/") {
