@@ -4,7 +4,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { requireArtifacts, type Env } from "./env";
 import { diffCommits } from "./diff";
-import { applyToCanon, findConflicts, isTransientGitError } from "./merge";
+import { applyToCanon, findConflicts, findOwnMerge, isTransientGitError, mergeMessage } from "./merge";
 import { withRetry } from "./retry";
 import { Store, type QueuedMerge, type Sql, type TaskInput, type VerdictInput } from "./store";
 
@@ -40,11 +40,26 @@ export class RepoDO extends DurableObject<Env> {
 		return this.store.snapshot();
 	}
 
+	// One merge per alarm call, then schedule the next. Draining the whole queue in one call let a long
+	// call be cut off after a merge push but before its result was saved (full-run series 3, run 5).
 	async alarm() {
-		for (let next = this.store.nextQueued(); next; next = this.store.nextQueued()) {
-			const r = await this.mergeOne(next).catch((e: Error) => ({ status: "error" as const, detail: e.message, commit: null }));
-			this.store.setMergeResult(next.id, r.status, r.detail, r.commit);
-		}
+		const next = this.store.nextQueued();
+		if (!next) return;
+		const r = await this.mergeOne(next).catch(async (e: Error) => {
+			// A push can succeed even when the reply is an error (for example a 503 after the write).
+			// Look once more before recording an error.
+			const own = await this.ownMergeInCanon(next).catch(() => null);
+			if (own) return { status: "merged" as const, detail: `already in canon after an error: ${e.message}`, commit: own };
+			return { status: "error" as const, detail: e.message, commit: null };
+		});
+		this.store.setMergeResult(next.id, r.status, r.detail, r.commit);
+		if (this.store.nextQueued()) await this.ctx.storage.setAlarm(Date.now());
+	}
+
+	private async ownMergeInCanon(v: QueuedMerge): Promise<string | null> {
+		requireArtifacts(this.env);
+		using canon = await this.env.ARTIFACTS.get(this.env.CANON_REPO);
+		return findOwnMerge(await canon.log({ ref: "main", limit: 100 }), v);
 	}
 
 	// Applies exactly the verified change: the blob hashes stored with the verdict for that commit.
@@ -54,7 +69,11 @@ export class RepoDO extends DurableObject<Env> {
 		const base = this.store.taskBase(v.task_id);
 
 		using canon = await this.env.ARTIFACTS.get(this.env.CANON_REPO);
-		const [head] = await canon.log({ ref: "main", limit: 1 });
+		const recent = await canon.log({ ref: "main", limit: 100 });
+		const head = recent[0];
+		// Repeat-safe: an earlier attempt may have pushed this merge without saving the result.
+		const already = findOwnMerge(recent, v);
+		if (already) return { status: "merged" as const, detail: "already in canon from an earlier attempt", commit: already };
 		const canonChanges = head.hash === base ? [] : await diffCommits(canon, base, head.hash);
 		const conflicts = findConflicts(v.changes, canonChanges);
 		if (conflicts.length) {
@@ -77,7 +96,7 @@ export class RepoDO extends DurableObject<Env> {
 				if (!blob) throw new Error(`blob ${hash} missing in ${v.fork}`);
 				return new Uint8Array(await blob.arrayBuffer());
 			},
-			message: `Merge ${v.agent_id} (${v.task_id}) at ${v.commit.slice(0, 12)}: ${v.summary ?? ""}`.trim(),
+			message: mergeMessage(v),
 			author: { name: "claimcheck", email: "merge@claimcheck.invalid" },
 		})), { tries: 3, delayMs: 2000, retryOn: isTransientGitError });
 		return { status: "merged" as const, detail: tries > 1 ? `merged on try ${tries}` : null, commit: sha };

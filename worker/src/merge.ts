@@ -13,6 +13,26 @@ export function findConflicts(agentChanges: FileChange[], canonChanges: FileChan
 		.sort();
 }
 
+interface MergeRef {
+	agent_id: string;
+	task_id: string;
+	commit: string;
+	summary: string | null;
+}
+
+const mergePrefix = (v: MergeRef) => `Merge ${v.agent_id} (${v.task_id}) at ${v.commit.slice(0, 12)}`;
+
+// The canon commit message for one verdict. It names the agent, task, and agent commit, so a merge
+// can be recognized later.
+export const mergeMessage = (v: MergeRef) => `${mergePrefix(v)}: ${v.summary ?? ""}`.trim();
+
+// Repeat-safe merging: if canon history already has this verdict's merge commit (an earlier attempt
+// pushed it but its result was not recorded), return that commit instead of merging again.
+export function findOwnMerge(log: { hash: string; message: string }[], v: MergeRef): string | null {
+	const prefix = mergePrefix(v);
+	return log.find((c) => c.message.startsWith(prefix + ":") || c.message.trim() === prefix)?.hash ?? null;
+}
+
 // Short server-side outages of the Artifacts git service. Seen in testing: "HTTP Error: 503 Service
 // Unavailable" on a merge push, and "artifacts_git_receive_pack_service_unavailable" on an agent push.
 export function isTransientGitError(e: unknown): boolean {
