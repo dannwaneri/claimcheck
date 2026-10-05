@@ -99,10 +99,29 @@ A real coding agent, not a script: **headless Claude Code** (`claude -p --bare`)
 
 Only `--scale 20` is defined. Forks are created one at a time (see "Found while building"), so creating 22 forks takes about a minute.
 
-**Tested** (Windows 11, Git Bash):
-- `demo/reset` then `demo/run`, 5 times in a row: all 5 matched the table above, 40–74 s per run including the reset. (This series ran before the fork retry was added.)
-- From a fresh clone in an empty folder, following the steps below: `demo/run`, `demo/reset`, `demo/run`, and `npm test` all passed. (Also before the fork retry.)
-- On a brand-new, empty namespace with the current code, where the run creates canon: matched, 43 s. Two earlier fresh-namespace runs on older code also matched.
+### Tested
+
+All on Windows 11 with Git Bash, against a deployed Worker.
+
+**Full demo, current code:** `demo/reset` then `demo/run --real-agent --scale 20`, 5 times in a row. **5 of 5 matched the plan in all three scenes.**
+
+| Run | Scene 1 | Scene 2 (real agent) | Scene 3 (22 agents) | Forks for 22 agents | Scene 3 time | Median push → verdict | Total |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | matched | honest claim, merged | matched | 56 s | 132 s | 6.3 s | 269 s |
+| 2 | matched | honest claim, merged | matched | 55 s | 98 s | 6.3 s | 233 s |
+| 3 | matched | honest claim, merged | matched | 64 s | 138 s | 7.4 s | 232 s |
+| 4 | matched | honest claim, merged | matched | 70 s | 115 s | 6.0 s | 208 s |
+| 5 | matched | honest claim, merged | matched | 45 s | 109 s | 7.2 s | 209 s |
+
+Scene 3 every run: 14 verified (13 merged, 1 merge conflict), 8 rejected (`UNCLAIMED_CHANGE` 3, `CLAIMED_NOT_CHANGED` 2, `PROTECTED_PATH` 2, LLM "no" 2). Which agent of the conflict pair merged first changed between runs.
+
+**Getting there took three earlier series of 5** (on older code: 4/5, 4/5, 3/5). Each failure was a short outage on the platform side that showed a weak spot in claimcheck. All four are fixed and listed under "Found while building".
+
+**Also tested:**
+- The real agent alone, 5 runs: all honest, all merged (details in "Scene 2").
+- The scale scene alone, 4 runs: all matched.
+- From a fresh clone in an empty folder, following the steps below: `demo/run`, `demo/reset`, `demo/run`, and `npm test` passed. (This was before the scale and real-agent scenes existed.)
+- On a brand-new, empty namespace, where the run creates canon: scene 1 matched, 43 s.
 
 ## Run it
 
@@ -169,7 +188,7 @@ cd worker
 npm test
 ```
 
-143 tests, all local, no Cloudflare account needed. Tested on Node 24.15. The store tests use the built-in `node:sqlite` module, so an older Node may fail them.
+168 tests, all local, no Cloudflare account needed. Tested on Node 24.15. The store tests use the built-in `node:sqlite` module, so an older Node may fail them.
 
 ### Clean up and billing
 
@@ -210,6 +229,12 @@ npx wrangler delete --name claimcheck
 - **The event trigger example in the docs does not match Wrangler 4.147.** The [build-and-deploy guide](https://developers.cloudflare.com/artifacts/guides/build-and-deploy-on-push/) shows `target` and `filter.repoName`. Wrangler wants `targets: [{ type: "workflow", workflow_name }]` and `filter.repo_name`.
 - **Forking several times in parallel right after a push fails often.** A push to canon followed at once by 5 parallel forks failed with `INTERNAL_ERROR` in **5 of 6** tries (each time one of the five forks failed). Without the push, 5 parallel forks worked 5 of 5 times. One fork right after a push worked 5 of 5 times. Forking one at a time right after a push worked 6 of 6 times. claimcheck now forks one at a time (about 12 s for 5 forks instead of about 3 s) and retries each fork up to 3 times on `INTERNAL_ERROR` or `UPSTREAM_UNAVAILABLE`. We do not know the cause on the Artifacts side.
 - **Recreating a just-deleted repo name fails for a while.** After deleting `canon`, creating `canon` again returned `ALREADY_EXISTS`, and forking a just-recreated canon returned `INTERNAL_ERROR`. That is why `demo/reset` keeps canon.
+- **Short outages under load, and what each one exposed.** In 20 full demo runs (4 series of 5; each run has 28 agents, about 20 LLM calls, and about 15 merges), we hit four short platform-side failures. Each one is now handled:
+  - A git push to a fork was refused with `artifacts_git_receive_pack_service_unavailable` (1 of about 540 pushes). Fix: `demo/run` and `demo/scale` retry a push up to 3 times and log each retry; a push that still fails stops the run and names the agent.
+  - A Workers AI call never answered. The Workflow step hung for 5 minutes and ended with `WorkflowInternalError`, so the agent got no verdict. Fix: each LLM call has a 45 s limit; after one retry the verdict is `needs_review` (never merged, never stuck); the step has a 3-minute cap.
+  - A merge push to canon got `HTTP Error: 503 Service Unavailable`, so a verified change was not merged. Fix: merges retry up to 3 times on 502, 503, and 504.
+  - **An honest agent was wrongly rejected with `MERGE_CONFLICT`.** Its merge had reached canon, but the result was not saved; a second attempt then saw the agent's own change and called it a conflict. Likely cause (not proven): the merge queue ran 14 merges in one Durable Object alarm call, and the call was cut off after a push. Fix: one merge per alarm call, and merges are repeat-safe: before merging (and after any error) the queue looks for the verdict's own merge commit in canon history and records it as merged.
+- **Claude Code on Qwen.** Headless Claude Code ran with `qwen3-coder-plus` through Alibaba Cloud Model Studio's Anthropic-compatible endpoint (`https://dashscope-intl.aliyuncs.com/apps/anthropic`). Without `--bare`, a user's global CLAUDE.md loaded into the headless agent; with `--bare` it did not.
 - **The token format changed during the build** from `art_v1_<hex>` to `art_v2_x_<hex>`. Code that matches only `art_v1_` misses new tokens.
 - **The binding has no diff method and no write method.** The diff is a tree walk with `readCommit`, `readTree`, and `readBlob` ([diff.ts](worker/src/diff.ts)), checked against `git diff --numstat` on a real fork. Writes to canon go through isomorphic-git.
 
