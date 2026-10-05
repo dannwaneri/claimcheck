@@ -36,7 +36,7 @@ function evidence(v: VerdictRow | undefined): string {
 		parts.push(`<li><code>MERGE_CONFLICT</code> canon changed ${d.paths.map((p: string) => `<b>${esc(p)}</b>`).join(", ")} since the task base (canon ${short(d.canon_head)})</li>`);
 	}
 	if (v.merge_status === "error") parts.push(`<li><code>MERGE_ERROR</code> ${esc(v.merge_detail)}</li>`);
-	if (v.merge_status === "merged") parts.push(`<li><code>MERGED</code> canon commit ${short(v.merged_commit)}</li>`);
+	if (v.merge_status === "merged") parts.push(`<li><code>MERGED</code> canon commit ${short(v.merged_commit)}${v.merge_detail ? ` (${esc(v.merge_detail)})` : ""}</li>`);
 	return parts.length ? `<ul>${parts.join("")}</ul>` : "";
 }
 

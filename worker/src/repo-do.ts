@@ -4,7 +4,8 @@
 import { DurableObject } from "cloudflare:workers";
 import { requireArtifacts, type Env } from "./env";
 import { diffCommits } from "./diff";
-import { applyToCanon, findConflicts } from "./merge";
+import { applyToCanon, findConflicts, isTransientGitError } from "./merge";
+import { withRetry } from "./retry";
 import { Store, type QueuedMerge, type Sql, type TaskInput, type VerdictInput } from "./store";
 
 export type { Verdict, VerdictRow } from "./store";
@@ -63,7 +64,10 @@ export class RepoDO extends DurableObject<Env> {
 		using fork = await this.env.ARTIFACTS.get(v.fork);
 		const info = await canon.info();
 		const token = await canon.createToken("write", 600);
-		const sha = await applyToCanon({
+		// Up to 3 tries on a short git-service outage (seen once: 503 on a merge push). Each try clones
+		// canon again and checks that its head is still the one the conflict check used.
+		let tries = 0;
+		const sha = await withRetry(() => (tries++, applyToCanon({
 			remote: info.remote,
 			token: token.plaintext,
 			expectedHead: head.hash,
@@ -75,7 +79,7 @@ export class RepoDO extends DurableObject<Env> {
 			},
 			message: `Merge ${v.agent_id} (${v.task_id}) at ${v.commit.slice(0, 12)}: ${v.summary ?? ""}`.trim(),
 			author: { name: "claimcheck", email: "merge@claimcheck.invalid" },
-		});
-		return { status: "merged" as const, detail: null, commit: sha };
+		})), { tries: 3, delayMs: 2000, retryOn: isTransientGitError });
+		return { status: "merged" as const, detail: tries > 1 ? `merged on try ${tries}` : null, commit: sha };
 	}
 }

@@ -13,6 +13,13 @@ export function findConflicts(agentChanges: FileChange[], canonChanges: FileChan
 		.sort();
 }
 
+// Short server-side outages of the Artifacts git service. Seen in testing: "HTTP Error: 503 Service
+// Unavailable" on a merge push, and "artifacts_git_receive_pack_service_unavailable" on an agent push.
+export function isTransientGitError(e: unknown): boolean {
+	const msg = (e as Error)?.message ?? String(e);
+	return /\b(502|503|504)\b|service unavailable|service_unavailable|bad gateway|gateway timeout/i.test(msg);
+}
+
 export interface ApplyInput {
 	remote: string;
 	token: string; // full token, "art_v<N>_<secret>?expires=..."
