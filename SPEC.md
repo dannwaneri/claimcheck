@@ -224,4 +224,5 @@ End-to-end run on the deployed Worker, task `tmutx0qo6`, five agents pushing at 
 - ~~Deleted file / new directory through `readTree`~~ — proved 2026-10-04: `diffCommits` on the real `agent-a` fork matched `git diff --numstat` exactly (delete, nested add, replaced line).
 - I did not test isomorphic-git push from a Worker to canon. The Cloudflare docs show it works; our spike did not do it.
 - `event.payload` shape: proved for one push. I did not test a push with many commits or a force push.
-- The spike namespace `claimcheck-spike` still holds repos `canon` and `agent-a`, and the `claimcheck-spike` Worker is deployed. Billing for Artifacts starts 2026-10-14. I will delete them after the real Worker works, unless you want them kept.
+- ~~Spike Worker and repos still live~~ — deleted 2026-10-05 (Worker `claimcheck-spike`, repos `canon` and `agent-a`, and the empty namespace).
+- **Billing date:** the Cloudflare docs (Artifacts changelog and pricing pages) say billing starts **October 14, 2026**. The Cloudflare blog post of October 1, 2026 ([We want you to build the next Git platform on Cloudflare](https://blog.cloudflare.com/next-git-platform-on-cloudflare/)) says **October 15, 2026**. Plan for the earlier date: delete demo repos before October 14.

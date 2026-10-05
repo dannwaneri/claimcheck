@@ -50,12 +50,15 @@ claim() { # claim <agent> <summary> <path> <description>
   node -e 'const [t,a,s,p,d]=process.argv.slice(1);console.log(JSON.stringify({task_id:t,agent_id:a,summary:s,scope:{paths:[p]},changes:[{path:p,description:d}]},null,2))' "$TASK" "$@"
 }
 
+# replace <file> <old text> <new text>: exact text edit (portable; BSD sed -i differs from GNU sed -i)
+replace() { node -e 'const fs=require("fs");const [f,a,b]=process.argv.slice(1);const s=fs.readFileSync(f,"utf8");if(!s.includes(a))throw new Error("text not found in "+f+": "+a);fs.writeFileSync(f,s.split(a).join(b))' "$@"; }
+
 edit_a() { printf '\nexport function sub(a, b) {\n  return a - b;\n}\n' >> src/math.js; }
-edit_b() { sed -i 's#replace(/\\s+/g, "-")#replace(/\\s+/g, "-").replace(/-+/g, "-")#' src/strings.js
-           sed -i 's#return Boolean(.*#return true;#' src/auth/session.js; }
+edit_b() { replace src/strings.js 'replace(/\s+/g, "-")' 'replace(/\s+/g, "-").replace(/-+/g, "-")'
+           replace src/auth/session.js 'return Boolean(session && session.userId && session.expiresAt > Date.now());' 'return true;'; }
 edit_c() { :; }
 edit_d() { printf '\nexport function mul(a, b) {\n  return a * b;\n}\n' >> src/math.js; }
-edit_e() { sed -i 's#return s.toLowerCase().replace#return s.replace#' src/strings.js; }
+edit_e() { replace src/strings.js 'return s.toLowerCase().replace' 'return s.replace'; }
 
 prepare() { # prepare <agent> <message> <claim json>: clone the fork, edit, write the claim, commit
   local id=$1 msg=$2 claimjson=$3 remote token
