@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Clean slate for a demo take: clears all tasks and verdicts, then deletes every agent fork in the
-# Worker's Artifacts namespace. Canon is kept (reusing a just-deleted repo name fails for a while);
-# demo/run force-pushes demo/sample-repo to canon at the start of each run.
+# Clean slate for a demo take: deletes the agent forks claimcheck created (the forks listed in its
+# state), then clears all tasks and verdicts. Other repos in the namespace are not touched. Canon is
+# kept (reusing a just-deleted repo name fails for a while); demo/run force-pushes demo/sample-repo
+# to canon at the start of each run.
 # Env: CLAIMCHECK_URL, CLAIMCHECK_SECRET.
 set -euo pipefail
 : "${CLAIMCHECK_URL:?set CLAIMCHECK_URL}"
@@ -9,6 +10,6 @@ set -euo pipefail
 W=${CLAIMCHECK_URL%/}
 
 OUT=$(curl -sfS -X POST -H "x-claimcheck-secret: $CLAIMCHECK_SECRET" "$W/reset")
-node -e 'const j=JSON.parse(process.argv[1]);console.log(`deleted ${j.deleted.length} repos${j.failed.length ? `, FAILED to delete: ${j.failed.join(", ")}` : ""}`);process.exit(j.failed.length?1:0)' "$OUT"
+node -e 'const j=JSON.parse(process.argv[1]);console.log(`deleted ${j.deleted.length} agent forks${j.missing.length ? ` (${j.missing.length} already gone)` : ""}`)' "$OUT"
 LEFT=$(curl -sfS "$W/api/state" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);console.log(j.tasks.length+j.agents.length+j.verdicts.length)})')
 [ "$LEFT" = 0 ] && echo "state cleared" || { echo "state not empty: $LEFT rows"; exit 1; }

@@ -1,6 +1,7 @@
 // HTTP routes. Kept apart from index.ts so tests can import it without the Workers runtime.
 import { renderDashboard } from "./dashboard";
 import { repoStub, requireArtifacts, type Env } from "./env";
+import { forkWithRetry } from "./retry";
 import { DEFAULT_POLICY, type Policy } from "./verify/types";
 
 const AGENT_ID = /^[a-z0-9][a-z0-9-]{0,31}$/;
@@ -62,33 +63,38 @@ async function createTask(env: Env, body: { agents?: unknown; policy?: Partial<P
 	const [head] = await step("log canon", () => canon.log({ ref: "main", limit: 1 }));
 	if (!head) return Response.json({ error: "canon has no commits on main; push a base commit first" }, { status: 409 });
 
-	// One fork per agent, one after another. Parallel forks right after a push to canon failed
-	// with INTERNAL_ERROR in 5 of 6 tries; parallel forks alone and a single fork after a push did not.
+	// One fork per agent, one after another, each with up to 3 tries. Parallel forks right after a push
+	// to canon failed with INTERNAL_ERROR in 5 of 6 tries; parallel forks alone and a single fork after a push did not.
 	const forks: { agent_id: string; fork: string; remote: string; token: string }[] = [];
-	for (const agent_id of agents as string[]) {
-		const name = `${id}-${agent_id}`;
-		const f = await step(`fork ${name}`, () => canon.fork(name, { defaultBranchOnly: true, description: `claimcheck ${id} ${agent_id}` }));
-		forks.push({ agent_id, fork: f.name, remote: f.remote, token: f.token });
+	try {
+		for (const agent_id of agents as string[]) {
+			const name = `${id}-${agent_id}`;
+			const f = await step(`fork ${name}`, () => forkWithRetry(env.ARTIFACTS, canon, name, `claimcheck ${id} ${agent_id}`));
+			forks.push({ agent_id, fork: f.name, remote: f.remote, token: f.token });
+		}
+	} catch (e) {
+		// The task is not stored, so /reset would not know these forks. Remove them now.
+		await Promise.all(forks.map((f) => env.ARTIFACTS.delete(f.fork).catch(() => false)));
+		throw e;
 	}
 
 	await repoStub(env).createTask({ id, base: head.hash, policy, agents: forks.map(({ token: _, ...a }) => a) });
 	return Response.json({ task_id: id, base: head.hash, policy, agents: forks }, { status: 201 });
 }
 
-// Clean slate for a demo take: clear RepoDO, then delete every agent fork in the namespace.
-// Canon is kept: recreating a just-deleted repo name failed with ALREADY_EXISTS / INTERNAL_ERROR
-// in testing. demo/run force-pushes the seed to canon instead.
+// Clean slate for a demo take: delete the agent forks claimcheck created (the forks in its own state),
+// then clear the state. Other repos in the namespace are never touched. Canon is kept: recreating a
+// just-deleted repo name failed with ALREADY_EXISTS / INTERNAL_ERROR in testing; demo/run force-pushes
+// the seed to canon instead.
 async function reset(env: Env) {
-	await repoStub(env).reset();
-	const names: string[] = [];
-	let cursor: string | undefined;
-	do {
-		const page = await env.ARTIFACTS.list({ limit: 100, cursor });
-		names.push(...page.repos.map((r) => r.name).filter((n) => n !== env.CANON_REPO));
-		cursor = page.cursor ?? undefined;
-	} while (cursor);
+	const stub = repoStub(env);
+	const names = (await stub.snapshot()).agents.map((a) => a.fork).filter((n) => n !== env.CANON_REPO);
 	const results = await Promise.all(names.map(async (n) => [n, await env.ARTIFACTS.delete(n)] as const));
-	return Response.json({ deleted: results.filter(([, ok]) => ok).map(([n]) => n).sort(), failed: results.filter(([, ok]) => !ok).map(([n]) => n) });
+	await stub.reset();
+	return Response.json({
+		deleted: results.filter(([, ok]) => ok).map(([n]) => n).sort(),
+		missing: results.filter(([, ok]) => !ok).map(([n]) => n).sort(), // already gone
+	});
 }
 
 export async function handle(req: Request, env: Env): Promise<Response> {
