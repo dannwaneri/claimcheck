@@ -13,6 +13,7 @@ interface PushEvent {
 	type: string;
 	source: { namespace: string; repoName: string };
 	payload: { ref: string; before: string; after: string };
+	metadata?: { eventTimestamp?: string };
 }
 
 const ZERO = /^0+$/;
@@ -82,6 +83,8 @@ export class VerifyWorkflow extends WorkflowEntrypoint<Env, PushEvent> {
 				findings,
 				llm,
 				changes: data.changes,
+				// Push time: the event's own timestamp, else when this Workflow run started.
+				pushed_at: ev.metadata?.eventTimestamp ?? event.timestamp.toISOString(),
 			}),
 		);
 		return { fork, commit, verdict, findings, llm };

@@ -105,6 +105,23 @@ describe("Q4: only verified verdicts enter the merge queue", () => {
 	});
 });
 
+describe("push time", () => {
+	it("stores pushed_at with the verdict", () => {
+		store.recordVerdict(verdict({ pushed_at: "2026-10-05T12:00:00.000Z" }));
+		expect(store.snapshot().verdicts[0].pushed_at).toBe("2026-10-05T12:00:00.000Z");
+	});
+
+	it("adds the pushed_at column to a verdicts table made before it existed", () => {
+		const sql = sqlite();
+		sql.exec(`CREATE TABLE verdicts (id TEXT PRIMARY KEY, task_id TEXT NOT NULL, agent_id TEXT NOT NULL, fork TEXT NOT NULL, "commit" TEXT NOT NULL,
+			summary TEXT, verdict TEXT NOT NULL, findings TEXT NOT NULL, llm TEXT NOT NULL, changes TEXT NOT NULL,
+			created_at TEXT NOT NULL, seq INTEGER NOT NULL, merge_status TEXT, merge_detail TEXT, merged_commit TEXT); SELECT 1;`);
+		const old = new Store(sql);
+		old.recordVerdict(verdict({ pushed_at: "2026-10-05T12:00:00.000Z" }));
+		expect(old.snapshot().verdicts[0].pushed_at).toBe("2026-10-05T12:00:00.000Z");
+	});
+});
+
 describe("merge queue order and reset", () => {
 	it("drains in arrival order", () => {
 		store.recordVerdict(verdict({ fork: "t1-d", agent_id: "d", commit: "d1" }));

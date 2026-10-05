@@ -27,10 +27,12 @@ export interface VerdictInput {
 	findings: Finding[];
 	llm: Judgement[];
 	changes: FileChange[];
+	pushed_at?: string | null; // when the push event happened (ISO); used for push-to-verdict time
 }
 
-export interface VerdictRow extends Omit<VerdictInput, "changes"> {
+export interface VerdictRow extends Omit<VerdictInput, "changes" | "pushed_at"> {
 	id: string;
+	pushed_at: string | null;
 	created_at: string;
 	merge_status: MergeStatus | null;
 	merge_detail: string | null;
@@ -57,7 +59,7 @@ const SCHEMA = `
 		id TEXT PRIMARY KEY, task_id TEXT NOT NULL, agent_id TEXT NOT NULL, fork TEXT NOT NULL, "commit" TEXT NOT NULL,
 		summary TEXT, verdict TEXT NOT NULL, findings TEXT NOT NULL, llm TEXT NOT NULL, changes TEXT NOT NULL,
 		created_at TEXT NOT NULL, seq INTEGER NOT NULL,
-		merge_status TEXT, merge_detail TEXT, merged_commit TEXT
+		merge_status TEXT, merge_detail TEXT, merged_commit TEXT, pushed_at TEXT
 	);
 `;
 
@@ -68,6 +70,9 @@ export class Store {
 
 	init() {
 		this.sql.exec(SCHEMA);
+		// Migration for tables created before pushed_at existed.
+		const cols = this.sql.exec<{ name: string }>("SELECT name FROM pragma_table_info('verdicts')").toArray().map((c) => c.name);
+		if (!cols.includes("pushed_at")) this.sql.exec("ALTER TABLE verdicts ADD COLUMN pushed_at TEXT");
 	}
 
 	reset() {
@@ -100,10 +105,10 @@ export class Store {
 		const seq = this.sql.exec<{ n: number }>("SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM verdicts").one().n;
 		const merge = v.verdict === "verified" ? "queued" : null;
 		const res = this.sql.exec(
-			`INSERT OR IGNORE INTO verdicts (id, task_id, agent_id, fork, "commit", summary, verdict, findings, llm, changes, created_at, seq, merge_status)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT OR IGNORE INTO verdicts (id, task_id, agent_id, fork, "commit", summary, verdict, findings, llm, changes, created_at, seq, merge_status, pushed_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			verdictKey(v.fork, v.commit), v.task_id, v.agent_id, v.fork, v.commit, v.summary, v.verdict,
-			JSON.stringify(v.findings), JSON.stringify(v.llm), JSON.stringify(v.changes), new Date().toISOString(), seq, merge,
+			JSON.stringify(v.findings), JSON.stringify(v.llm), JSON.stringify(v.changes), new Date().toISOString(), seq, merge, v.pushed_at ?? null,
 		);
 		return merge !== null && res.rowsWritten > 0;
 	}
@@ -130,7 +135,7 @@ export class Store {
 		const agents = this.sql.exec<{ fork: string; task_id: string; agent_id: string; remote: string }>("SELECT * FROM agents ORDER BY agent_id").toArray();
 		const verdicts = this.sql
 			.exec<Record<string, any>>(
-				`SELECT id, task_id, agent_id, fork, "commit", summary, verdict, findings, llm, created_at, merge_status, merge_detail, merged_commit FROM verdicts ORDER BY seq`,
+				`SELECT id, task_id, agent_id, fork, "commit", summary, verdict, findings, llm, pushed_at, created_at, merge_status, merge_detail, merged_commit FROM verdicts ORDER BY seq`,
 			)
 			.toArray()
 			.map((r) => ({ ...r, findings: JSON.parse(r.findings), llm: JSON.parse(r.llm) }) as VerdictRow);

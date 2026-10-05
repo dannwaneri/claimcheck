@@ -1,5 +1,6 @@
 // One server-rendered page. Refreshes itself every 3 s so a demo run updates live.
 import type { RepoDO, VerdictRow } from "./repo-do";
+import { summarize, type Summary } from "./summary";
 
 type Snapshot = ReturnType<RepoDO["snapshot"]>;
 
@@ -39,6 +40,13 @@ function evidence(v: VerdictRow | undefined): string {
 	return parts.length ? `<ul>${parts.join("")}</ul>` : "";
 }
 
+function summaryBlock(sum: Summary): string {
+	const c = sum.counts;
+	const secs = sum.medianPushToVerdictMs === null ? "n/a" : `${(sum.medianPushToVerdictMs / 1000).toFixed(1)} s`;
+	const reasons = Object.entries(sum.reasons).map(([code, n]) => `<code>${esc(code)}</code> ${n}`).join(" · ") || "none";
+	return `<p class="summary"><b>${c.agents}</b> agents · <span class="good">${c.verified} verified</span> (${c.merged} merged, ${c.merge_rejected} merge rejected) · <span class="bad">${c.rejected} rejected</span> · <span class="warn">${c.needs_review} needs review</span>${c.waiting ? ` · ${c.waiting} waiting` : ""} · median push → verdict <b>${secs}</b><br><span class="muted">reasons:</span> ${reasons}</p>`;
+}
+
 export function renderDashboard(s: Snapshot, model: string): string {
 	const sections = s.tasks.map((t) => {
 		const agents = s.agents.filter((a) => a.task_id === t.id);
@@ -55,6 +63,7 @@ export function renderDashboard(s: Snapshot, model: string): string {
 		});
 		return `<section>
 			<h2>Task <code>${esc(t.id)}</code></h2>
+			${summaryBlock(summarize(s.verdicts.filter((v) => v.task_id === t.id), agents.map((a) => a.agent_id)))}
 			<p class="muted">base ${short(t.base)} · protected ${esc(t.policy.protectedPaths.join(", "))} · max ${esc(t.policy.maxLines)} lines / ${esc(t.policy.maxFiles)} files · created ${esc(t.created_at)}</p>
 			<table><thead><tr><th>Agent</th><th>Claim</th><th>Result</th><th>Evidence</th></tr></thead><tbody>${rows.join("")}</tbody></table>
 		</section>`;
@@ -71,11 +80,12 @@ h1{font-size:20px;margin:0 0 4px}h2{font-size:16px;margin:24px 0 4px}.muted{colo
 table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}
 code,pre{background:var(--code);border-radius:4px;font:12px ui-monospace,monospace;padding:1px 4px}pre{margin:4px 0;padding:6px;white-space:pre-wrap;word-break:break-word}
 ul{margin:0;padding-left:16px}.badge{border:1px solid currentColor;border-radius:999px;font-size:12px;padding:2px 8px;white-space:nowrap}
-.good{color:var(--good)}.bad{color:var(--bad)}.warn{color:var(--warn)}.wait{color:var(--wait)}
+.summary{background:var(--code);border-radius:6px;padding:8px 10px}.good{color:var(--good)}.bad{color:var(--bad)}.warn{color:var(--warn)}.wait{color:var(--wait)}
 @media (max-width:700px){th:nth-child(2),td:nth-child(2){display:none}}
 </style></head><body>
 <h1>claimcheck</h1>
 <p class="muted">Agents declare claims. Only verified changes merge. Canon repo: <code>canon</code> · LLM: <code>${esc(model)}</code></p>
+${s.tasks.length > 1 ? `<h2>All tasks</h2>${summaryBlock(summarize(s.verdicts, s.agents.map((a) => a.fork)))}` : ""}
 ${sections.join("") || "<p>No tasks yet. Create one with <code>POST /tasks</code>.</p>"}
 </body></html>`;
 }
