@@ -71,7 +71,10 @@ prepare() { # prepare <agent> <message> <claim json>: clone the fork, edit, writ
 }
 
 push() { # push <agent>
-  (cd "$WORK/agent-$1" && git_ -c http.extraHeader="Authorization: Bearer $(cat "$WORK/token-$1")" push -q origin HEAD:main)
+  if ! (cd "$WORK/agent-$1" && push_retry "$1" "$(cat "$WORK/token-$1")"); then
+    echo "agent $1: push failed after 3 tries" >> "$WORK/push-errors"
+    return 1
+  fi
   log "agent $1 pushed"
 }
 
@@ -92,6 +95,10 @@ all_settled() { state | node "$HERE/state.mjs" settled "$TASK" 5; }
      fi) &
 wait
 
+if [[ -f "$WORK/push-errors" ]]; then
+  log "STOPPED: $(tr '\n' ' ' < "$WORK/push-errors")"
+  exit 1
+fi
 if [[ -f "$WORK/stop" ]]; then
   log "STOPPED: $(cat "$WORK/stop")"
   echo "Check the Workflow runs: npx wrangler workflows instances list claimcheck-verify" >&2

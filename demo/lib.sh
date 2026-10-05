@@ -35,6 +35,21 @@ wait_for() { # wait_for <seconds> <command...>: poll every 2 s until the command
   done
 }
 
+push_retry() { # push_retry <agent> <token>: git push HEAD:main from the current repo, up to 3 tries (wait 2 s, 4 s)
+  # Artifacts once refused 1 of 22 parallel pushes with "artifacts_git_receive_pack_service_unavailable".
+  # Every retry is logged so it is visible in the run output.
+  local agent=$1 token=$2 try err
+  for try in 1 2 3; do
+    if err=$(git_ -c http.extraHeader="Authorization: Bearer $token" push -q origin HEAD:main 2>&1); then
+      (( try > 1 )) && log "agent $agent: push worked on try $try"
+      return 0
+    fi
+    log "agent $agent: push try $try failed: $(grep -m1 -E 'remote:|fatal:|error:' <<<"$err" | sed -E 's#https://[^ ]*##')"
+    (( try < 3 )) && sleep $(( try * 2 ))
+  done
+  return 1
+}
+
 settled() { # settled <task> <agent>: true when that agent has a final result
   [[ "$(state | node "$HERE/state.mjs" outcome "$1" "$2")" =~ ^(merged|conflict|error|rejected|needs_review)$ ]]
 }

@@ -71,7 +71,7 @@ run_agent() { # clone the fork, edit, write the claim, commit, push
   local c; c=$(edit_and_claim "$id")
   mkdir -p .claim && printf '%s\n' "$c" > .claim/claim.json
   git_ add -A && git_ -c user.name="agent-$id" -c user.email="$id@example.invalid" commit -qm "agent $id"
-  git_ -c http.extraHeader="Authorization: Bearer $token" push -q origin HEAD:main
+  push_retry "$id" "$token"
 }
 
 # All 22 agents at the same time.
@@ -80,7 +80,12 @@ for id in "${AGENTS[@]}"; do
 done
 wait
 PUSHED_AT=$(date +%s)
-log "scale: all agents pushed ($(( PUSHED_AT - SCENE_START ))s into the scene)$( [[ -f "$WORK/errors" ]] && echo "; ERRORS: $(tr '\n' ' ' < "$WORK/errors")")"
+if [[ -f "$WORK/errors" ]]; then
+  # A failed push can never get a verdict, so stop now instead of waiting for it.
+  log "scale: STOPPED, push failed after 3 tries for: $(tr '\n' ' ' < "$WORK/errors")"
+  exit 1
+fi
+log "scale: all agents pushed ($(( PUSHED_AT - SCENE_START ))s into the scene)"
 
 if ! wait_for "$SCALE_TIMEOUT" bash -c "curl -sfS '$W/api/state' | node '$HERE/state.mjs' settled '$TASK' ${#AGENTS[@]}"; then
   log "scale: STOPPED, no final result after ${SCALE_TIMEOUT}s for: $(state | node "$HERE/state.mjs" missing "$TASK")"
