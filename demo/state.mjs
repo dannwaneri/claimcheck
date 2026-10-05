@@ -58,6 +58,49 @@ if (cmd === "outcome") {
 		for (const j of v.llm) console.log(`  LLM ${j.matches} on ${j.path}: ${j.reason || j.error}${j.evidence ? `\n    evidence: ${j.evidence}` : ""}`);
 		if (v.merge_detail) console.log(`  merge: ${v.merge_detail}`);
 	}
+} else if (cmd === "scale-report") {
+	// Plan for demo/scale: 12 honest, a conflict pair (c1, c2), and 8 misreporting agents.
+	const SCALE = {
+		...Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`h${String(i + 1).padStart(2, "0")}`, { outcome: "merged", codes: [] }])),
+		x1: { outcome: "rejected", codes: ["UNCLAIMED_CHANGE"] },
+		x2: { outcome: "rejected", codes: ["UNCLAIMED_CHANGE"] },
+		y1: { outcome: "rejected", codes: ["CLAIMED_NOT_CHANGED"] },
+		y2: { outcome: "rejected", codes: ["CLAIMED_NOT_CHANGED"] },
+		p1: { outcome: "rejected", codes: ["PROTECTED_PATH"] },
+		p2: { outcome: "rejected", codes: ["PROTECTED_PATH", "UNCLAIMED_CHANGE"] },
+		w1: { outcome: "rejected", codes: ["LLM_NO"] },
+		w2: { outcome: "rejected", codes: ["LLM_NO"] },
+	};
+	const fmt = (x) => `${x.outcome}${x.codes.length ? " " + x.codes.join("+") : ""}`;
+	let ok = true;
+	const bad = [];
+	for (const [agent, plan] of Object.entries(SCALE)) {
+		const got = { outcome: outcome(agent), codes: codes(agent) };
+		if (got.outcome !== plan.outcome || JSON.stringify(got.codes) !== JSON.stringify(plan.codes)) {
+			ok = false;
+			bad.push(`${agent}: expected ${fmt(plan)}, got ${fmt(got)}`);
+		}
+	}
+	// The conflict pair: whichever merges first wins; the other must be rejected by the merge queue.
+	const pair = ["c1", "c2"].map((a) => outcome(a)).sort().join(",");
+	if (pair !== "conflict,merged") {
+		ok = false;
+		bad.push(`c1/c2: expected one merged and one conflict, got ${pair}`);
+	}
+	const agents = state.agents.filter((a) => a.task_id === task).map((a) => a.agent_id);
+	const rows = agents.map(latest).filter(Boolean);
+	const count = (f) => rows.filter(f).length;
+	const lat = rows.filter((v) => v.pushed_at).map((v) => Date.parse(v.created_at) - Date.parse(v.pushed_at)).sort((a, b) => a - b);
+	const median = lat.length ? (lat.length % 2 ? lat[(lat.length - 1) / 2] : (lat[lat.length / 2 - 1] + lat[lat.length / 2]) / 2) : null;
+	const reasons = {};
+	for (const a of agents) for (const c of codes(a)) reasons[c] = (reasons[c] ?? 0) + 1;
+	console.log(`agents ${agents.length} · verified ${count((v) => v.verdict === "verified")} (merged ${count((v) => v.merge_status === "merged")}, merge conflict ${count((v) => v.merge_status === "conflict")}) · rejected ${count((v) => v.verdict === "rejected")} · needs_review ${count((v) => v.verdict === "needs_review")} · merge error ${count((v) => v.merge_status === "error")}`);
+	console.log(`median push -> verdict ${median === null ? "n/a" : (median / 1000).toFixed(1) + " s"} · max ${lat.length ? (lat[lat.length - 1] / 1000).toFixed(1) + " s" : "n/a"}`);
+	console.log(`reasons: ${Object.entries(reasons).sort().map(([k, n]) => `${k} ${n}`).join(" · ")}`);
+	console.log(`conflict pair: c1 ${outcome("c1")}, c2 ${outcome("c2")}`);
+	for (const b of bad) console.log(`MISMATCH ${b}`);
+	console.log(ok ? "SCALE PLAN OK" : "SCALE PLAN MISMATCH");
+	process.exit(ok ? 0 : 1);
 } else if (cmd === "missing") {
 	const agents = state.agents.filter((a) => a.task_id === task).map((a) => a.agent_id);
 	console.log(agents.filter((a) => !FINAL.has(outcome(a))).map((a) => `${a} (${outcome(a)})`).join(", ") || "none");

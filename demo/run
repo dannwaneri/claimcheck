@@ -8,17 +8,20 @@
 #   D  honest change to src/math.js, pushes after A merged -> verified, then merge conflict
 #   E  claim text does not match its diff                 -> rejected by the LLM check
 #
-# Optional scene:
+# Optional scenes:
 #   --real-agent   after the five scripted agents, one headless Claude Code agent does a real task
-#                  and writes its own claim (needs ANTHROPIC_API_KEY; see demo/real-agent)
+#                  and writes its own claim (needs a model key; see demo/real-agent)
+#   --scale 20     then 22 scripted agents push at once to one task (see demo/scale)
 #
 # Needs: bash, git, curl, node. Env: CLAIMCHECK_URL, CLAIMCHECK_SECRET.
 set -euo pipefail
 REAL_AGENT=0
-for arg in "$@"; do
-  case "$arg" in
-    --real-agent) REAL_AGENT=1 ;;
-    *) echo "unknown option: $arg (known: --real-agent)" >&2; exit 2 ;;
+SCALE=0
+while (( $# )); do
+  case "$1" in
+    --real-agent) REAL_AGENT=1; shift ;;
+    --scale) SCALE=${2:?--scale needs a number}; shift 2 ;;
+    *) echo "unknown option: $1 (known: --real-agent, --scale 20)" >&2; exit 2 ;;
   esac
 done
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -112,5 +115,12 @@ if (( REAL_AGENT )); then
     log "real-agent scene FAILED (see above). The scripted results above still stand."
   fi
 fi
+SCALE_RC=0
+if (( SCALE )); then
+  echo
+  log "scene 3: scale, $SCALE agents + a 2-agent conflict pair"
+  "$HERE/scale" "$SCALE" || SCALE_RC=$?
+fi
 echo "dashboard: $W/"
+(( PLAN_RC == 0 )) && exit "$SCALE_RC"
 exit "$PLAN_RC"

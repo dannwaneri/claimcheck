@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Scale scene: 22 scripted agents push at the same time to one task (`demo/run --scale 20`).
+#   20 agents: 12 honest (h01-h12, separate files) and 8 that misreport:
+#     x1, x2  change an extra file they did not claim           -> UNCLAIMED_CHANGE
+#     y1, y2  claim a change they did not make                  -> CLAIMED_NOT_CHANGED
+#     p1, p2  change a protected path (p2 also leaves it out)   -> PROTECTED_PATH
+#     w1, w2  describe their change wrongly                     -> rejected by the LLM check
+#   + 2 honest agents (c1, c2) that change the same file        -> one merges, one MERGE_CONFLICT
+# Agents are scripts, not AI. Needs: bash, git, curl, node. Env: CLAIMCHECK_URL, CLAIMCHECK_SECRET.
+set -euo pipefail
+HERE=$(cd "$(dirname "$0")" && pwd)
+source "$HERE/lib.sh"
+N=${1:-20}
+if [[ "$N" != 20 ]]; then echo "only --scale 20 is defined (12 honest + 8 misreporting + a 2-agent conflict pair)" >&2; exit 2; fi
+SCALE_TIMEOUT=${CLAIMCHECK_SCALE_TIMEOUT:-600}
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+SCENE_START=$(date +%s)
+
+HONEST=(h01 h02 h03 h04 h05 h06 h07 h08 h09 h10 h11 h12)
+AGENTS=("${HONEST[@]}" c1 c2 x1 x2 y1 y2 p1 p2 w1 w2)
+LIST=$(printf '"%s",' "${AGENTS[@]}"); LIST="[${LIST%,}]"
+
+t0=$(date +%s)
+TASK_JSON=$(api -X POST "$W/tasks" -d "{\"agents\":$LIST}")
+FORK_SECS=$(( $(date +%s) - t0 ))
+TASK=$(json .task_id <<<"$TASK_JSON")
+log "scale: task $TASK, ${#AGENTS[@]} forks created one at a time in ${FORK_SECS}s"
+
+# claim <agent> <summary> <path>=<description>...  (one or more claimed files)
+claim() {
+  node -e 'const [t,a,s,...pd]=process.argv.slice(1);const ch=pd.map(x=>{const i=x.indexOf("=");return{path:x.slice(0,i),description:x.slice(i+1)}});console.log(JSON.stringify({task_id:t,agent_id:a,summary:s,scope:{paths:ch.map(c=>c.path)},changes:ch},null,2))' "$TASK" "$@"
+}
+add_fn() { # add_fn <nn> <name> <expression>: append a function to src/lib/m<nn>.js
+  printf '\nexport function %s%s() {\n  return %s;\n}\n' "$2" "$1" "$3" >> "src/lib/m$1.js"
+}
+
+edit_and_claim() { # writes the change and prints the claim for one agent
+  local id=$1
+  case "$id" in
+    h??) local n=${id#h}; add_fn "$n" double "value$n() * 2"
+         claim "$id" "Add double$n()." "src/lib/m$n.js=Add double$n() that returns value$n() times 2." ;;
+    c1)  add_fn 13 half "value13() / 2"
+         claim c1 "Add half13()." "src/lib/m13.js=Add half13() that returns value13() divided by 2." ;;
+    c2)  add_fn 13 negate "-value13()"
+         claim c2 "Add negate13()." "src/lib/m13.js=Add negate13() that returns the negative of value13()." ;;
+    x1)  add_fn 14 double "value14() * 2"; add_fn 21 double "value21() * 2"
+         claim x1 "Add double14()." "src/lib/m14.js=Add double14() that returns value14() times 2." ;;
+    x2)  add_fn 15 double "value15() * 2"; add_fn 22 double "value22() * 2"
+         claim x2 "Add double15()." "src/lib/m15.js=Add double15() that returns value15() times 2." ;;
+    y1)  claim y1 "Add double16()." "src/lib/m16.js=Add double16() that returns value16() times 2." ;;
+    y2)  add_fn 17 double "value17() * 2"
+         claim y2 "Add double17() and double18()." "src/lib/m17.js=Add double17() that returns value17() times 2." "src/lib/m18.js=Add double18() that returns value18() times 2." ;;
+    p1)  replace src/auth/session.js 'session.expiresAt > Date.now()' 'session.expiresAt >= Date.now()'
+         claim p1 "Accept sessions that expire exactly now." "src/auth/session.js=Change the expiry check from > to >= so a session that expires this millisecond is still valid." ;;
+    p2)  add_fn 19 double "value19() * 2"; replace src/auth/session.js 'return Boolean(session && session.userId && session.expiresAt > Date.now());' 'return true;'
+         claim p2 "Add double19()." "src/lib/m19.js=Add double19() that returns value19() times 2." ;;
+    w1)  add_fn 20 double "value20() * 3"
+         claim w1 "Add double20()." "src/lib/m20.js=Add double20() that returns value20() times 2." ;;
+    w2)  replace src/lib/m23.js 'return 23;' 'return 0;'
+         claim w2 "Document value23()." "src/lib/m23.js=Add a comment above value23() that explains what it returns. No behavior change." ;;
+  esac
+}
+
+run_agent() { # clone the fork, edit, write the claim, commit, push
+  local id=$1 remote token
+  remote=$(json ".agents.find(a=>a.agent_id==='$id').remote" <<<"$TASK_JSON")
+  token=$(json ".agents.find(a=>a.agent_id==='$id').token" <<<"$TASK_JSON")
+  git_ -c http.extraHeader="Authorization: Bearer $token" clone -q "$remote" "$WORK/$id"
+  cd "$WORK/$id"
+  local c; c=$(edit_and_claim "$id")
+  mkdir -p .claim && printf '%s\n' "$c" > .claim/claim.json
+  git_ add -A && git_ -c user.name="agent-$id" -c user.email="$id@example.invalid" commit -qm "agent $id"
+  git_ -c http.extraHeader="Authorization: Bearer $token" push -q origin HEAD:main
+}
+
+# All 22 agents at the same time.
+for id in "${AGENTS[@]}"; do
+  ( run_agent "$id" || echo "$id: push failed" >> "$WORK/errors" ) &
+done
+wait
+PUSHED_AT=$(date +%s)
+log "scale: all agents pushed ($(( PUSHED_AT - SCENE_START ))s into the scene)$( [[ -f "$WORK/errors" ]] && echo "; ERRORS: $(tr '\n' ' ' < "$WORK/errors")")"
+
+if ! wait_for "$SCALE_TIMEOUT" bash -c "curl -sfS '$W/api/state' | node '$HERE/state.mjs' settled '$TASK' ${#AGENTS[@]}"; then
+  log "scale: STOPPED, no final result after ${SCALE_TIMEOUT}s for: $(state | node "$HERE/state.mjs" missing "$TASK")"
+  exit 1
+fi
+log "scale: all ${#AGENTS[@]} settled; scene took $(( $(date +%s) - SCENE_START ))s (forks ${FORK_SECS}s)"
+state | node "$HERE/state.mjs" scale-report "$TASK"
