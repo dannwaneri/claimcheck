@@ -8,33 +8,27 @@
 #   D  honest change to src/math.js, pushes after A merged -> verified, then merge conflict
 #   E  claim text does not match its diff                 -> rejected by the LLM check
 #
+# Optional scene:
+#   --real-agent   after the five scripted agents, one headless Claude Code agent does a real task
+#                  and writes its own claim (needs ANTHROPIC_API_KEY; see demo/real-agent)
+#
 # Needs: bash, git, curl, node. Env: CLAIMCHECK_URL, CLAIMCHECK_SECRET.
 set -euo pipefail
-: "${CLAIMCHECK_URL:?set CLAIMCHECK_URL, for example https://claimcheck.<your-subdomain>.workers.dev}"
-: "${CLAIMCHECK_SECRET:?set CLAIMCHECK_SECRET to the value you stored with wrangler secret put}"
-W=${CLAIMCHECK_URL%/}
+REAL_AGENT=0
+for arg in "$@"; do
+  case "$arg" in
+    --real-agent) REAL_AGENT=1 ;;
+    *) echo "unknown option: $arg (known: --real-agent)" >&2; exit 2 ;;
+  esac
+done
 HERE=$(cd "$(dirname "$0")" && pwd)
+export START=$(date +%s)
+source "$HERE/lib.sh"
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 TIMEOUT=${CLAIMCHECK_TIMEOUT:-300}      # seconds to wait for all five results
 A_TIMEOUT=${CLAIMCHECK_A_TIMEOUT:-180}  # seconds agent D waits for agent A's result
-START=$(date +%s)
 
-log() { printf '[%3ss] %s\n' "$(( $(date +%s) - START ))" "$*"; }
-api() { # POST to a protected route; on HTTP errors print the JSON error and fail
-  local out code
-  out=$(curl -sS -w '\n%{http_code}' -H "x-claimcheck-secret: $CLAIMCHECK_SECRET" -H 'content-type: application/json' "$@")
-  code=${out##*$'\n'}; out=${out%$'\n'*}
-  if (( code >= 400 )); then
-    echo "HTTP $code from $*: $out" >&2
-    (( code == 401 )) && echo "Hint: CLAIMCHECK_SECRET must match the Worker secret. A new secret can take ~30 s to apply after 'wrangler secret put'." >&2
-    return 1
-  fi
-  printf '%s' "$out"
-}
-state() { curl -sfS "$W/api/state"; }
-json() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);console.log(eval("j"+process.argv[1]))})' "$1"; }
-git_() { git -c core.autocrlf=false -c init.defaultBranch=main "$@"; }
 
 # 1. Canon: create it if needed, then force-push demo/sample-repo so every run starts from the same files.
 CANON=$(api -X POST "$W/canon")
@@ -53,9 +47,6 @@ log "task $TASK created with 5 forks"
 claim() { # claim <agent> <summary> <path> <description>
   node -e 'const [t,a,s,p,d]=process.argv.slice(1);console.log(JSON.stringify({task_id:t,agent_id:a,summary:s,scope:{paths:[p]},changes:[{path:p,description:d}]},null,2))' "$TASK" "$@"
 }
-
-# replace <file> <old text> <new text>: exact text edit (portable; BSD sed -i differs from GNU sed -i)
-replace() { node -e 'const fs=require("fs");const [f,a,b]=process.argv.slice(1);const s=fs.readFileSync(f,"utf8");if(!s.includes(a))throw new Error("text not found in "+f+": "+a);fs.writeFileSync(f,s.split(a).join(b))' "$@"; }
 
 edit_a() { printf '\nexport function sub(a, b) {\n  return a - b;\n}\n' >> src/math.js; }
 edit_b() { replace src/strings.js 'replace(/\s+/g, "-")' 'replace(/\s+/g, "-").replace(/-+/g, "-")'
@@ -81,16 +72,7 @@ push() { # push <agent>
   log "agent $1 pushed"
 }
 
-wait_for() { # wait_for <seconds> <command...>: poll every 2 s until the command succeeds; 1 on timeout
-  local limit=$1; shift
-  local deadline=$(( $(date +%s) + limit ))
-  until "$@"; do
-    (( $(date +%s) > deadline )) && return 1
-    sleep 2
-  done
-}
-
-a_settled() { [[ "$(state | node "$HERE/state.mjs" outcome "$TASK" a)" =~ ^(merged|conflict|error|rejected|needs_review)$ ]]; }
+a_settled() { settled "$TASK" a; }
 all_settled() { state | node "$HERE/state.mjs" settled "$TASK" 5; }
 
 # 3. All five agents work at the same time.
@@ -120,5 +102,15 @@ if ! wait_for "$TIMEOUT" all_settled; then
 fi
 log "all agents settled"
 echo
-state | node "$HERE/state.mjs" report "$TASK"
+PLAN_RC=0
+state | node "$HERE/state.mjs" report "$TASK" || PLAN_RC=$?
+
+if (( REAL_AGENT )); then
+  echo
+  log "scene 2: real agent (headless Claude Code)"
+  if ! "$HERE/real-agent"; then
+    log "real-agent scene FAILED (see above). The scripted results above still stand."
+  fi
+fi
 echo "dashboard: $W/"
+exit "$PLAN_RC"

@@ -47,6 +47,17 @@ if (cmd === "outcome") {
 } else if (cmd === "settled") {
 	const agents = state.agents.filter((a) => a.task_id === task).map((a) => a.agent_id);
 	process.exit(agents.length >= Number(arg) && agents.every((a) => FINAL.has(outcome(a))) ? 0 : 1);
+} else if (cmd === "detail") {
+	// One agent's verdict and evidence, for the real-agent scene.
+	const v = latest(arg);
+	if (!v) {
+		console.log("no verdict");
+	} else {
+		console.log(`verdict: ${outcome(arg)}${codes(arg).length ? " (" + codes(arg).join(", ") + ")" : ""}`);
+		for (const f of v.findings) console.log(`  ${f.code}: ${f.detail}`);
+		for (const j of v.llm) console.log(`  LLM ${j.matches} on ${j.path}: ${j.reason || j.error}${j.evidence ? `\n    evidence: ${j.evidence}` : ""}`);
+		if (v.merge_detail) console.log(`  merge: ${v.merge_detail}`);
+	}
 } else if (cmd === "missing") {
 	const agents = state.agents.filter((a) => a.task_id === task).map((a) => a.agent_id);
 	console.log(agents.filter((a) => !FINAL.has(outcome(a))).map((a) => `${a} (${outcome(a)})`).join(", ") || "none");
