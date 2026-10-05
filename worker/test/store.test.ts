@@ -1,28 +1,9 @@
 /// <reference types="node" />
 // Runs the real Store SQL on SQLite (node:sqlite), the same engine Durable Objects use.
-import { DatabaseSync } from "node:sqlite";
+import { sqlite } from "./helpers/sqlite";
 import { beforeEach, describe, expect, it } from "vitest";
-import { Store, verdictKey, type Sql, type VerdictInput } from "../src/store";
+import { Store, verdictKey, type VerdictInput } from "../src/store";
 import { DEFAULT_POLICY, type FileChange } from "../src/verify/types";
-
-function sqlite(): Sql {
-	const db = new DatabaseSync(":memory:");
-	return {
-		exec(query: string, ...bindings: unknown[]) {
-			if (bindings.length === 0 && query.trim().split(";").filter((s) => s.trim()).length > 1) {
-				db.exec(query);
-				return { toArray: () => [], one: () => { throw new Error("no rows"); }, rowsWritten: 0 };
-			}
-			const stmt = db.prepare(query);
-			if (/^\s*SELECT/i.test(query)) {
-				const rows = stmt.all(...(bindings as any[])) as any[];
-				return { toArray: () => rows, one: () => { if (rows.length !== 1) throw new Error(`expected one row, got ${rows.length}`); return rows[0]; }, rowsWritten: 0 };
-			}
-			const r = stmt.run(...(bindings as any[]));
-			return { toArray: () => [], one: () => { throw new Error("no rows"); }, rowsWritten: Number(r.changes) };
-		},
-	} as Sql;
-}
 
 const change = (path: string, newHash: string): FileChange => ({ path, status: "modified", oldHash: "base", newHash, additions: 1, deletions: 0 });
 
