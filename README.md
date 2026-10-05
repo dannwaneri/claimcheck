@@ -63,9 +63,9 @@ Agent D does its work at the same time as the others but **pushes only after the
 `demo/run` force-pushes `demo/sample-repo` to canon at the start of each run, so every run starts from the same files.
 
 **Tested** (Windows 11, Git Bash):
-- `demo/reset` then `demo/run`, 5 times in a row on the current code: all 5 matched the table above, 40–74 s per run including the reset.
-- From a fresh clone in an empty folder, following the steps below: `demo/run`, `demo/reset`, `demo/run`, and `npm test` all passed.
-- On two brand-new, empty namespaces, where the first run creates canon: both matched. This test ran before the change to create forks one at a time.
+- `demo/reset` then `demo/run`, 5 times in a row: all 5 matched the table above, 40–74 s per run including the reset. (This series ran before the fork retry was added.)
+- From a fresh clone in an empty folder, following the steps below: `demo/run`, `demo/reset`, `demo/run`, and `npm test` all passed. (Also before the fork retry.)
+- On a brand-new, empty namespace with the current code, where the run creates canon: matched, 43 s. Two earlier fresh-namespace runs on older code also matched.
 
 ## Run it
 
@@ -111,7 +111,11 @@ demo/reset
 demo/run
 ```
 
-`demo/reset` clears all tasks and verdicts and deletes every agent fork. It keeps canon, because recreating a just-deleted repo name failed in testing (see below).
+`demo/reset` deletes the agent forks that claimcheck created (the forks listed in its own state), then clears all tasks and verdicts. It keeps canon, because recreating a just-deleted repo name failed in testing (see below).
+
+> **Warning:** use the `claimcheck` Artifacts namespace only for claimcheck. `demo/reset` does not touch repos it did not create (tested: an unrelated repo in the namespace survived a reset), but `demo/run` force-pushes over `canon`, and Cloudflare cleanup commands below act on the whole namespace.
+
+The dashboard keeps showing verdicts after the demo repos are deleted: verdicts live in the Durable Object, not in the repos (tested: all six demo repos deleted, all 5 verdicts still shown). Only `demo/reset` clears them.
 
 ### Run the tests
 
@@ -120,7 +124,7 @@ cd worker
 npm test
 ```
 
-129 tests, all local, no Cloudflare account needed. Tested on Node 24.15. The store tests use the built-in `node:sqlite` module, so an older Node may fail them.
+143 tests, all local, no Cloudflare account needed. Tested on Node 24.15. The store tests use the built-in `node:sqlite` module, so an older Node may fail them.
 
 ### Clean up and billing
 
@@ -141,7 +145,7 @@ npx wrangler delete --name claimcheck
 | `GET /api/state` | none | Tasks, agents, verdicts as JSON (no tokens) |
 | `POST /canon` | `x-claimcheck-secret` | Create canon if missing; return its remote and a write token |
 | `POST /tasks` `{agents: [...], policy?}` | `x-claimcheck-secret` | Fork canon once per agent; return remotes and write tokens |
-| `POST /reset` | `x-claimcheck-secret` | Clear all state; delete every repo except canon |
+| `POST /reset` | `x-claimcheck-secret` | Delete the agent forks in claimcheck's state; clear all state. Canon and other repos are kept |
 
 ## Limits
 
@@ -157,6 +161,7 @@ npx wrangler delete --name claimcheck
 
 - **The in-memory filesystem in the Cloudflare isomorphic-git example does not work with `git.clone`.** The helper on the [isomorphic-git example page](https://developers.cloudflare.com/artifacts/examples/isomorphic-git/) has no `readlink` or `symlink` methods. isomorphic-git binds both at startup, so every call failed with `Cannot read properties of undefined (reading 'bind')`. The helper also throws errors without a `code` property, and isomorphic-git checks `err.code === "ENOENT"` to tell a missing file from a real failure. Our fixed copy is [memory-fs.ts](worker/src/memory-fs.ts), with a test in [memory-fs.test.ts](worker/test/memory-fs.test.ts).
 - **The event trigger example in the docs does not match Wrangler 4.147.** The [build-and-deploy guide](https://developers.cloudflare.com/artifacts/guides/build-and-deploy-on-push/) shows `target` and `filter.repoName`. Wrangler wants `targets: [{ type: "workflow", workflow_name }]` and `filter.repo_name`.
+- **Forking several times in parallel right after a push fails often.** A push to canon followed at once by 5 parallel forks failed with `INTERNAL_ERROR` in **5 of 6** tries (each time one of the five forks failed). Without the push, 5 parallel forks worked 5 of 5 times. One fork right after a push worked 5 of 5 times. Forking one at a time right after a push worked 6 of 6 times. claimcheck now forks one at a time (about 12 s for 5 forks instead of about 3 s) and retries each fork up to 3 times on `INTERNAL_ERROR` or `UPSTREAM_UNAVAILABLE`. We do not know the cause on the Artifacts side.
 - **Recreating a just-deleted repo name fails for a while.** After deleting `canon`, creating `canon` again returned `ALREADY_EXISTS`, and forking a just-recreated canon returned `INTERNAL_ERROR`. That is why `demo/reset` keeps canon.
 - **The token format changed during the build** from `art_v1_<hex>` to `art_v2_x_<hex>`. Code that matches only `art_v1_` misses new tokens.
 - **The binding has no diff method and no write method.** The diff is a tree walk with `readCommit`, `readTree`, and `readBlob` ([diff.ts](worker/src/diff.ts)), checked against `git diff --numstat` on a real fork. Writes to canon go through isomorphic-git.
