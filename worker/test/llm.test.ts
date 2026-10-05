@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { decide, parseJudgement, type Judgement } from "../src/verify/llm";
+import { decide, judgeChange, parseJudgement, type Judgement } from "../src/verify/llm";
 
 const diff = [
 	"--- a/src/strings.js",
@@ -45,6 +45,29 @@ describe("parseJudgement", () => {
 		["empty", ""],
 	])("fails on %s", (_name, raw) => {
 		expect(parseJudgement(raw).ok).toBe(false);
+	});
+});
+
+describe("judgeChange time limit", () => {
+	it("gives up on a model call that never answers and returns an error (-> needs_review)", async () => {
+		let calls = 0;
+		const hung = { run: () => { calls++; return new Promise(() => {}); } } as unknown as Ai;
+		const t = Date.now();
+		const j = await judgeChange(hung, "m", "a.js", "d", diff, { timeoutMs: 30 });
+		expect(Date.now() - t).toBeLessThan(1000);
+		expect(calls).toBe(2); // one retry, then stop
+		expect(j.matches).toBe("unclear");
+		expect(j.error).toMatch(/timed out after 30 ms/);
+		expect(decide([j], { "a.js": diff })).toBe("needs_review");
+	});
+
+	it("uses the answer when the retry answers in time", async () => {
+		let calls = 0;
+		const flaky = {
+			run: () => (++calls === 1 ? new Promise(() => {}) : Promise.resolve({ response: '{"matches":"yes","evidence":"e","reason":"r"}' })),
+		} as unknown as Ai;
+		const j = await judgeChange(flaky, "m", "a.js", "d", diff, { timeoutMs: 30 });
+		expect([j.matches, j.error, calls]).toEqual(["yes", undefined, 2]);
 	});
 });
 

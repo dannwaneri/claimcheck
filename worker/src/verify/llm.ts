@@ -82,19 +82,40 @@ function responseOf(out: unknown): unknown {
 	return o;
 }
 
-// One retry on bad output, then give up with needs_review. No open-ended loop.
-export async function judgeChange(ai: Ai, model: string, path: string, description: string, diff: string): Promise<Judgement> {
+// Each model call has a time limit: in testing, one Workers AI call never answered and held a
+// verdict for 5 minutes. A call that runs out of time counts as a failed try.
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+	let timer: ReturnType<typeof setTimeout>;
+	const limit = new Promise<never>((_, reject) => {
+		timer = setTimeout(() => reject(new Error(`model call timed out after ${ms} ms`)), ms);
+	});
+	return Promise.race([p, limit]).finally(() => clearTimeout(timer));
+}
+
+// One retry on bad output, an error, or a timeout; then give up with needs_review. No open-ended loop.
+export async function judgeChange(
+	ai: Ai,
+	model: string,
+	path: string,
+	description: string,
+	diff: string,
+	opts: { timeoutMs?: number } = {},
+): Promise<Judgement> {
+	const timeoutMs = opts.timeoutMs ?? 45_000;
 	let lastError = "";
 	for (let attempt = 0; attempt < 2; attempt++) {
 		try {
-			const out = await ai.run(model as any, {
-				messages: [
-					{ role: "system", content: SYSTEM },
-					{ role: "user", content: prompt(description, diff) },
-				],
-				max_tokens: 1024,
-				temperature: 0,
-			} as any);
+			const out = await withTimeout(
+				ai.run(model as any, {
+					messages: [
+						{ role: "system", content: SYSTEM },
+						{ role: "user", content: prompt(description, diff) },
+					],
+					max_tokens: 1024,
+					temperature: 0,
+				} as any) as Promise<unknown>,
+				timeoutMs,
+			);
 			const parsed = parseJudgement(responseOf(out));
 			if (parsed.ok) return { path, description, ...parsed.value };
 			lastError = parsed.error;

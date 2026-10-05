@@ -56,7 +56,8 @@ export class VerifyWorkflow extends WorkflowEntrypoint<Env, PushEvent> {
 		let llm: Judgement[] = [];
 		if (parsed.ok && findings.length === 0) {
 			const claim = parsed.claim;
-			const result = await step.do("llm check", async () => {
+			// Each model call is limited to 45 s and tried twice (llm.ts), so 3 minutes is a hard ceiling.
+			const result = await step.do("llm check", { timeout: "3 minutes", retries: { limit: 1, delay: "5 seconds" } }, async () => {
 				using repo = await this.env.ARTIFACTS.get(fork);
 				const diffs: Record<string, string> = {};
 				for (const c of data.changes) {
