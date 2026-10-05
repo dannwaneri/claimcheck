@@ -92,4 +92,9 @@ if ! wait_for "$SCALE_TIMEOUT" bash -c "curl -sfS '$W/api/state' | node '$HERE/s
   exit 1
 fi
 log "scale: all ${#AGENTS[@]} settled; scene took $(( $(date +%s) - SCENE_START ))s (forks ${FORK_SECS}s)"
-state | node "$HERE/state.mjs" scale-report "$TASK"
+step "SCENE 3 - RESULT"
+RC=0
+state | node "$HERE/state.mjs" scale-report "$TASK" || RC=$?
+echo
+state | node "$HERE/state.mjs" table "$TASK"
+exit "$RC"

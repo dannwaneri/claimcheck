@@ -12,6 +12,7 @@
 #   --real-agent   after the five scripted agents, one headless Claude Code agent does a real task
 #                  and writes its own claim (needs a model key; see demo/real-agent)
 #   --scale 20     then 22 scripted agents push at once to one task (see demo/scale)
+#   --record       clear step labels and a 2 s pause between scenes, for screen recording
 #
 # Needs: bash, git, curl, node. Env: CLAIMCHECK_URL, CLAIMCHECK_SECRET.
 set -euo pipefail
@@ -21,7 +22,8 @@ while (( $# )); do
   case "$1" in
     --real-agent) REAL_AGENT=1; shift ;;
     --scale) SCALE=${2:?--scale needs a number}; shift 2 ;;
-    *) echo "unknown option: $1 (known: --real-agent, --scale 20)" >&2; exit 2 ;;
+    --record) export CLAIMCHECK_RECORD=1; shift ;;
+    *) echo "unknown option: $1 (known: --real-agent, --scale 20, --record)" >&2; exit 2 ;;
   esac
 done
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -34,6 +36,7 @@ A_TIMEOUT=${CLAIMCHECK_A_TIMEOUT:-180}  # seconds agent D waits for agent A's re
 
 
 # 1. Canon: create it if needed, then force-push demo/sample-repo so every run starts from the same files.
+step "SCENE 1 - STEP 1: reset canon to the sample repo"
 CANON=$(api -X POST "$W/canon")
 REMOTE=$(json .remote <<<"$CANON"); TOKEN=$(json .token <<<"$CANON")
 cp -r "$HERE/sample-repo" "$WORK/seed"
@@ -43,6 +46,7 @@ cp -r "$HERE/sample-repo" "$WORK/seed"
 log "canon reset to demo/sample-repo"
 
 # 2. One task, five agents. The Worker forks canon once per agent.
+step "SCENE 1 - STEP 2: create a task; claimcheck forks canon once per agent"
 TASK_JSON=$(api -X POST "$W/tasks" -d '{"agents":["a","b","c","d","e"]}')
 TASK=$(json .task_id <<<"$TASK_JSON")
 log "task $TASK created with 5 forks"
@@ -82,6 +86,7 @@ a_settled() { settled "$TASK" a; }
 all_settled() { state | node "$HERE/state.mjs" settled "$TASK" 5; }
 
 # 3. All five agents work at the same time.
+step "SCENE 1 - STEP 3: five agents edit, write their claims, and push at the same time"
 (prepare a "Add sub()" "$(claim a 'Add a sub() helper.' src/math.js 'Add sub(a, b) that returns a - b.')" && push a) &
 (prepare b "Collapse dashes in slugify" "$(claim b 'Collapse repeated dashes in slugify().' src/strings.js 'Replace runs of dashes with one dash in slugify().')" && push b) &
 (prepare c "Handle empty string in capitalize" "$(claim c 'Make capitalize() safe for empty strings.' src/strings.js 'Return an empty string from capitalize() when the input is empty.')" && push c) &
@@ -106,26 +111,29 @@ if [[ -f "$WORK/stop" ]]; then
 fi
 
 # 4. Wait for every verdict and merge, then compare with the plan.
+step "SCENE 1 - STEP 4: claimcheck checks each claim against its diff, then merges verified changes"
 if ! wait_for "$TIMEOUT" all_settled; then
   log "STOPPED: no final result after ${TIMEOUT}s for: $(state | node "$HERE/state.mjs" missing "$TASK")"
   exit 1
 fi
 log "all agents settled"
-echo
+step "SCENE 1 - RESULT"
 PLAN_RC=0
 state | node "$HERE/state.mjs" report "$TASK" || PLAN_RC=$?
+echo
+state | node "$HERE/state.mjs" table "$TASK"
 
 if (( REAL_AGENT )); then
-  echo
-  log "scene 2: real agent (headless Claude Code)"
+  scene_pause
+  step "SCENE 2: one real agent (headless Claude Code, model qwen3-coder-plus) does a task and writes its own claim"
   if ! "$HERE/real-agent"; then
     log "real-agent scene FAILED (see above). The scripted results above still stand."
   fi
 fi
 SCALE_RC=0
 if (( SCALE )); then
-  echo
-  log "scene 3: scale, $SCALE agents + a 2-agent conflict pair"
+  scene_pause
+  step "SCENE 3: $SCALE agents + a 2-agent conflict pair push at the same time"
   "$HERE/scale" "$SCALE" || SCALE_RC=$?
 fi
 echo "dashboard: $W/"

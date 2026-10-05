@@ -7,6 +7,13 @@ START=${START:-$(date +%s)}
 
 log() { printf '[%3ss] %s\n' "$(( $(date +%s) - START ))" "$*"; }
 
+# Recording mode (demo/run --record): clear step labels and a 2 s pause between scenes.
+RECORD=${CLAIMCHECK_RECORD:-0}
+step() { # step <label>
+  if (( RECORD )); then printf '\n==== %s ====\n' "$*"; else log "$*"; fi
+}
+scene_pause() { (( RECORD )) && sleep 2 || true; }
+
 api() { # POST to a protected route; on HTTP errors print the JSON error and fail
   local out code
   out=$(curl -sS -w '\n%{http_code}' -H "x-claimcheck-secret: $CLAIMCHECK_SECRET" -H 'content-type: application/json' "$@")
@@ -20,7 +27,9 @@ api() { # POST to a protected route; on HTTP errors print the JSON error and fai
 }
 
 state() { curl -sfS "$W/api/state"; }
-json() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const j=JSON.parse(s);console.log(eval("j"+process.argv[1]))})' "$1"; }
+# json <expr>: read JSON on stdin and print j<expr>. An empty or non-JSON reply fails with a clear message
+# (one run once failed here with only "Unexpected end of JSON input"; the cause was not found).
+json() { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{if(!s.trim()){console.error("empty reply from the claimcheck API (needed "+process.argv[1]+")");process.exit(1)}let j;try{j=JSON.parse(s)}catch(e){console.error("reply from the claimcheck API is not JSON (needed "+process.argv[1]+"): "+s.slice(0,200));process.exit(1)}console.log(eval("j"+process.argv[1]))})' "$1"; }
 git_() { git -c core.autocrlf=false -c init.defaultBranch=main "$@"; }
 
 # replace <file> <old text> <new text>: exact text edit (portable; BSD sed -i differs from GNU sed -i)

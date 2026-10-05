@@ -101,6 +101,22 @@ if (cmd === "outcome") {
 	for (const b of bad) console.log(`MISMATCH ${b}`);
 	console.log(ok ? "SCALE PLAN OK" : "SCALE PLAN MISMATCH");
 	process.exit(ok ? 0 : 1);
+} else if (cmd === "table") {
+	// Final summary table for the screen: agent, claim, verdict, reason, merged.
+	const agents = state.agents.filter((a) => a.task_id === task).map((a) => a.agent_id);
+	const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
+	const rows = agents.map((a) => {
+		const v = latest(a);
+		const o = outcome(a);
+		const merged = { merged: "yes", conflict: "no (conflict)", error: "no (error)", queued: "pending", waiting: "-" }[o] ?? "no";
+		const reason = codes(a).filter((c) => c !== "MERGE_CONFLICT").join(" + ") || (o === "conflict" ? "MERGE_CONFLICT" : "-");
+		return [a, cut(v?.summary ?? "(no valid claim)", 42), v ? v.verdict : "waiting", o === "conflict" ? "MERGE_CONFLICT" : reason, merged];
+	});
+	const head = ["agent", "claim", "verdict", "reason", "merged"];
+	const w = head.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i].length)));
+	const line = (r) => "| " + r.map((c, i) => c.padEnd(w[i])).join(" | ") + " |";
+	const sep = "+-" + w.map((n) => "-".repeat(n)).join("-+-") + "-+";
+	console.log([sep, line(head), sep, ...rows.map(line), sep].join("\n"));
 } else if (cmd === "missing") {
 	const agents = state.agents.filter((a) => a.task_id === task).map((a) => a.agent_id);
 	console.log(agents.filter((a) => !FINAL.has(outcome(a))).map((a) => `${a} (${outcome(a)})`).join(", ") || "none");

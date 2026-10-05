@@ -117,3 +117,5 @@ if ! wait_for 240 settled "$TASK" "$AGENT"; then
   exit 1
 fi
 state | node "$HERE/state.mjs" detail "$TASK" "$AGENT" | tee "$OUT/verdict.txt"
+echo
+state | node "$HERE/state.mjs" table "$TASK"
