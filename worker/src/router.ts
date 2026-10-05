@@ -25,6 +25,16 @@ function authorize(req: Request, env: Env): Response | null {
 	return null;
 }
 
+// Label an Artifacts call so an error says which step failed. Keeps the error code.
+async function step<T>(label: string, fn: () => Promise<T>): Promise<T> {
+	try {
+		return await fn();
+	} catch (e) {
+		const err = e as { message?: string; code?: string };
+		throw Object.assign(new Error(`${label}: ${err.message ?? String(e)}`), { code: err.code });
+	}
+}
+
 async function createCanon(env: Env) {
 	try {
 		using repo = await env.ARTIFACTS.get(env.CANON_REPO);
@@ -49,16 +59,17 @@ async function createTask(env: Env, body: { agents?: unknown; policy?: Partial<P
 	const id = `t${Date.now().toString(36)}`;
 
 	using canon = await env.ARTIFACTS.get(env.CANON_REPO);
-	const [head] = await canon.log({ ref: "main", limit: 1 });
+	const [head] = await step("log canon", () => canon.log({ ref: "main", limit: 1 }));
 	if (!head) return Response.json({ error: "canon has no commits on main; push a base commit first" }, { status: 409 });
 
-	// One fork per agent, all at once.
-	const forks = await Promise.all(
-		(agents as string[]).map(async (agent_id) => {
-			const f = await canon.fork(`${id}-${agent_id}`, { defaultBranchOnly: true, description: `claimcheck ${id} ${agent_id}` });
-			return { agent_id, fork: f.name, remote: f.remote, token: f.token };
-		}),
-	);
+	// One fork per agent, one after another. Parallel forks right after a push to canon failed
+	// with INTERNAL_ERROR in 5 of 6 tries; parallel forks alone and a single fork after a push did not.
+	const forks: { agent_id: string; fork: string; remote: string; token: string }[] = [];
+	for (const agent_id of agents as string[]) {
+		const name = `${id}-${agent_id}`;
+		const f = await step(`fork ${name}`, () => canon.fork(name, { defaultBranchOnly: true, description: `claimcheck ${id} ${agent_id}` }));
+		forks.push({ agent_id, fork: f.name, remote: f.remote, token: f.token });
+	}
 
 	await repoStub(env).createTask({ id, base: head.hash, policy, agents: forks.map(({ token: _, ...a }) => a) });
 	return Response.json({ task_id: id, base: head.hash, policy, agents: forks }, { status: 201 });
