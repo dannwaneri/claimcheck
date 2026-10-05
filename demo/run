@@ -16,7 +16,8 @@ W=${CLAIMCHECK_URL%/}
 HERE=$(cd "$(dirname "$0")" && pwd)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
-TIMEOUT=${CLAIMCHECK_TIMEOUT:-300}
+TIMEOUT=${CLAIMCHECK_TIMEOUT:-300}      # seconds to wait for all five results
+A_TIMEOUT=${CLAIMCHECK_A_TIMEOUT:-180}  # seconds agent D waits for agent A's result
 START=$(date +%s)
 
 log() { printf '[%3ss] %s\n' "$(( $(date +%s) - START ))" "$*"; }
@@ -73,11 +74,11 @@ push() { # push <agent>
   log "agent $1 pushed"
 }
 
-wait_for() { # wait_for <description> <command...>: poll every 2 s until the command succeeds
-  local what=$1; shift
-  local deadline=$(( $(date +%s) + TIMEOUT ))
+wait_for() { # wait_for <seconds> <command...>: poll every 2 s until the command succeeds; 1 on timeout
+  local limit=$1; shift
+  local deadline=$(( $(date +%s) + limit ))
   until "$@"; do
-    if (( $(date +%s) > deadline )); then log "timed out waiting for $what"; return 1; fi
+    (( $(date +%s) > deadline )) && return 1
     sleep 2
   done
 }
@@ -92,13 +93,24 @@ all_settled() { state | node "$HERE/state.mjs" settled "$TASK" 5; }
 (prepare e "Trim slugify input" "$(claim e 'Trim whitespace in slugify().' src/strings.js 'Trim leading and trailing whitespace before slugifying.')" && push e) &
 # D does its work now, but pushes only after A has a final result. The first verified change wins.
 (prepare d "Add mul()" "$(claim d 'Add a mul() helper.' src/math.js 'Add mul(a, b) that returns a * b.')" \
-  && wait_for "agent A to settle" a_settled \
-  && log "agent A is $(state | node "$HERE/state.mjs" outcome "$TASK" a); agent D pushes now" \
-  && push d) &
+  && if wait_for "$A_TIMEOUT" a_settled; then
+       log "agent A is $(state | node "$HERE/state.mjs" outcome "$TASK" a); agent D pushes now" && push d
+     else
+       echo "agent A has no final result after ${A_TIMEOUT}s (A is: $(state | node "$HERE/state.mjs" outcome "$TASK" a)). Agent D did not push." > "$WORK/stop"
+     fi) &
 wait
 
+if [[ -f "$WORK/stop" ]]; then
+  log "STOPPED: $(cat "$WORK/stop")"
+  echo "Check the Workflow runs: npx wrangler workflows instances list claimcheck-verify" >&2
+  exit 1
+fi
+
 # 4. Wait for every verdict and merge, then compare with the plan.
-wait_for "all five results" all_settled
+if ! wait_for "$TIMEOUT" all_settled; then
+  log "STOPPED: no final result after ${TIMEOUT}s for: $(state | node "$HERE/state.mjs" missing "$TASK")"
+  exit 1
+fi
 log "all agents settled"
 echo
 state | node "$HERE/state.mjs" report "$TASK"

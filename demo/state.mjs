@@ -1,6 +1,7 @@
 // Reads GET /api/state JSON on stdin and answers questions for demo/run.
 //   node state.mjs outcome <task> <agent>   -> prints one outcome word
 //   node state.mjs settled <task> <n>       -> exit 0 when n agents have a final outcome
+//   node state.mjs missing <task>           -> lists agents without a final outcome
 //   node state.mjs report <task>            -> prints the result table; exit 1 if it differs from the plan
 const [cmd, task, arg] = process.argv.slice(2);
 const input = await new Promise((resolve) => {
@@ -46,6 +47,9 @@ if (cmd === "outcome") {
 } else if (cmd === "settled") {
 	const agents = state.agents.filter((a) => a.task_id === task).map((a) => a.agent_id);
 	process.exit(agents.length >= Number(arg) && agents.every((a) => FINAL.has(outcome(a))) ? 0 : 1);
+} else if (cmd === "missing") {
+	const agents = state.agents.filter((a) => a.task_id === task).map((a) => a.agent_id);
+	console.log(agents.filter((a) => !FINAL.has(outcome(a))).map((a) => `${a} (${outcome(a)})`).join(", ") || "none");
 } else if (cmd === "report") {
 	let ok = true;
 	console.log("agent  expected                                   actual");
