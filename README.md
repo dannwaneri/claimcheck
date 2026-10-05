@@ -258,7 +258,7 @@ npx wrangler delete --name claimcheck
   - A merge push to canon got `HTTP Error: 503 Service Unavailable`, so a verified change was not merged. Fix: merges retry up to 3 times on 502, 503, and 504.
   - **An honest agent was wrongly rejected with `MERGE_CONFLICT`.** Its merge had reached canon, but the result was not saved; a second attempt then saw the agent's own change and called it a conflict. Likely cause (not proven): the merge queue ran 14 merges in one Durable Object alarm call, and the call was cut off after a push. Fix: one merge per alarm call, and merges are repeat-safe: before merging (and after any error) the queue looks for the verdict's own merge commit in canon history and records it as merged.
 - **Claude Code on Qwen.** Headless Claude Code ran with `qwen3-coder-plus` through Alibaba Cloud Model Studio's Anthropic-compatible endpoint (`https://dashscope-intl.aliyuncs.com/apps/anthropic`). Without `--bare`, a user's global CLAUDE.md loaded into the headless agent; with `--bare` it did not.
-- **The token format changed during the build** from `art_v1_<hex>` to `art_v2_x_<hex>`. Code that matches only `art_v1_` misses new tokens.
+- **The token format changed during the build.** Tokens look like `art_v<N>_<hex>`, and N changed from 1 to 2. Code that matches only one version misses new tokens.
 - **The binding has no diff method and no write method.** The diff is a tree walk with `readCommit`, `readTree`, and `readBlob` ([diff.ts](worker/src/diff.ts)), checked against `git diff --numstat` on a real fork. Writes to canon go through isomorphic-git.
 
 ## Repo layout

@@ -102,17 +102,29 @@ if (cmd === "outcome") {
 	console.log(ok ? "SCALE PLAN OK" : "SCALE PLAN MISMATCH");
 	process.exit(ok ? 0 : 1);
 } else if (cmd === "table") {
-	// Final summary table for the screen: agent, claim, verdict, reason, merged.
+	// Final summary table for the screen, in plain words. The API keeps the short codes.
+	const REASON = {
+		PROTECTED_PATH: "touched a protected file",
+		UNCLAIMED_CHANGE: "changed a file it did not claim",
+		CLAIMED_NOT_CHANGED: "claimed a change it did not make",
+		LLM_NO: "the claim does not match the diff",
+		CLAIM_INVALID: "the claim file is missing or invalid",
+		DIFF_TOO_LARGE: "the change is too large",
+	};
+	const plain = (a) => {
+		const o = outcome(a);
+		if (o === "merged") return "verified, merged";
+		if (o === "conflict") return "verified, but blocked: another change already edited the same file";
+		if (o === "error") return "verified, but the merge failed";
+		if (o === "queued") return "verified, waiting to merge";
+		if (o === "needs_review") return "needs review: the checker could not decide";
+		if (o === "waiting") return "waiting for a verdict";
+		return "rejected: " + codes(a).map((c) => REASON[c] ?? c).join("; ");
+	};
 	const agents = state.agents.filter((a) => a.task_id === task).map((a) => a.agent_id);
 	const cut = (s, n) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
-	const rows = agents.map((a) => {
-		const v = latest(a);
-		const o = outcome(a);
-		const merged = { merged: "yes", conflict: "no (conflict)", error: "no (error)", queued: "pending", waiting: "-" }[o] ?? "no";
-		const reason = codes(a).filter((c) => c !== "MERGE_CONFLICT").join(" + ") || (o === "conflict" ? "MERGE_CONFLICT" : "-");
-		return [a, cut(v?.summary ?? "(no valid claim)", 42), v ? v.verdict : "waiting", o === "conflict" ? "MERGE_CONFLICT" : reason, merged];
-	});
-	const head = ["agent", "claim", "verdict", "reason", "merged"];
+	const rows = agents.map((a) => [a, cut(latest(a)?.summary ?? "(no valid claim)", 42), plain(a)]);
+	const head = ["agent", "claim", "result"];
 	const w = head.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i].length)));
 	const line = (r) => "| " + r.map((c, i) => c.padEnd(w[i])).join(" | ") + " |";
 	const sep = "+-" + w.map((n) => "-".repeat(n)).join("-+-") + "-+";
