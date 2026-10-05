@@ -62,7 +62,10 @@ Agent D does its work at the same time as the others but **pushes only after the
 
 `demo/run` force-pushes `demo/sample-repo` to canon at the start of each run, so every run starts from the same files.
 
-**Tested:** `demo/reset` then `demo/run`, 5 times in a row, all 5 matched the table above (29–60 s per run). Also tested on two brand-new, empty namespaces (first run creates canon): both matched.
+**Tested** (Windows 11, Git Bash):
+- `demo/reset` then `demo/run`, 5 times in a row on the current code: all 5 matched the table above, 40–74 s per run including the reset.
+- From a fresh clone in an empty folder, following the steps below: `demo/run`, `demo/reset`, `demo/run`, and `npm test` all passed.
+- On two brand-new, empty namespaces, where the first run creates canon: both matched. This test ran before the change to create forks one at a time.
 
 ## Run it
 
