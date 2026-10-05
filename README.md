@@ -93,7 +93,7 @@ export CLAIMCHECK_SECRET=$(node -e "console.log(require('crypto').randomBytes(24
 printf '%s' "$CLAIMCHECK_SECRET" | npx wrangler secret put CLAIMCHECK_SECRET
 ```
 
-Keep that shell open (or save the value somewhere safe). Then run the demo from the repo root:
+Keep that shell open (or save the value somewhere safe). **Wait about 30 seconds**: in testing, the first request right after `wrangler secret put` got `401`, and the same request a few seconds later worked. Then run the demo from the repo root:
 
 ```bash
 cd ..

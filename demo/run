@@ -25,7 +25,11 @@ api() { # POST to a protected route; on HTTP errors print the JSON error and fai
   local out code
   out=$(curl -sS -w '\n%{http_code}' -H "x-claimcheck-secret: $CLAIMCHECK_SECRET" -H 'content-type: application/json' "$@")
   code=${out##*$'\n'}; out=${out%$'\n'*}
-  if (( code >= 400 )); then echo "HTTP $code from $*: $out" >&2; return 1; fi
+  if (( code >= 400 )); then
+    echo "HTTP $code from $*: $out" >&2
+    (( code == 401 )) && echo "Hint: CLAIMCHECK_SECRET must match the Worker secret. A new secret can take ~30 s to apply after 'wrangler secret put'." >&2
+    return 1
+  fi
   printf '%s' "$out"
 }
 state() { curl -sfS "$W/api/state"; }
