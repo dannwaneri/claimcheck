@@ -1,14 +1,26 @@
 # claimcheck
 
-A Git platform layer for AI agents, built on Cloudflare Workers and [Artifacts](https://developers.cloudflare.com/artifacts/).
+**Agents can describe their changes any way they like. claimcheck checks every description against the real diff, and only verified changes merge.**
 
-Several agents work on the same codebase at the same time. Each agent works in its own fork and must push a **claim**: which files it changed and what each change does. claimcheck checks the claim against the real diff. Only verified changes merge into the main repo.
+In 5 full demo runs in a row (28 agents per run, pushing at the same time), claimcheck rejected all 11 agents that misreported, in every run, and wrongly rejected 0 honest claims. Each verdict came with evidence, in a median of 6–7.5 seconds. (Honest changes that touch a file another verified change already edited are blocked on purpose: the first verified change wins.)
 
-Entry for the Cloudflare "build the next Git platform" competition. License: MIT.
+A Git platform layer for AI agents, built on Cloudflare Workers and [Artifacts](https://developers.cloudflare.com/artifacts/). Each agent works in its own fork and must push a **claim**: which files it changed and what each change does. Entry for the Cloudflare "build the next Git platform" competition. License: MIT.
 
 ## The problem
 
 An AI agent's commit message is a claim, and nobody checks it. An agent says "fixed a typo" and also edits an auth file. It says "trimmed whitespace" and removes a different line. When many agents push at once, a human cannot read every diff. claimcheck makes the claim a required, machine-checked part of every push.
+
+## How claimcheck is different
+
+Most multi-agent Git platforms coordinate the work **before** it happens: an agent claims a task or a set of files, a lock or lease keeps others out, and a judge or a reviewer picks a winner. That answers "who works on what" and "which change is best".
+
+claimcheck answers a different question, **after** the work: **did the agent do what it says it did?** Here a claim is the agent's own statement about its finished change, and every part of it is checked:
+
+- every file it changed is listed, and every listed file really changed;
+- it did not touch a protected path;
+- each description matches its diff, checked by an LLM that must quote a line from the diff as evidence, or the change goes to review instead of merging.
+
+So an agent that hides a change, invents one, or describes it wrongly is caught on the push, with the evidence on the dashboard. This sits next to coordination, not instead of it: a platform can lease files to agents and still use claimcheck to verify what comes back.
 
 ## How it works
 
@@ -139,6 +151,8 @@ All on Windows 11 with Git Bash, against a deployed Worker.
 Scene 3 every run: 14 verified (13 merged, 1 merge conflict), 8 rejected (`UNCLAIMED_CHANGE` 3, `CLAIMED_NOT_CHANGED` 2, `PROTECTED_PATH` 2, LLM "no" 2). Which agent of the conflict pair merged first changed between runs.
 
 **Getting there took three earlier series of 5** (on older code: 4/5, 4/5, 3/5). Each failure was a short outage on the platform side that showed a weak spot in claimcheck. All four are fixed and listed under "Found while building".
+
+**10 real agents at the same time** (2026-10-07, `demo/real-agent` started 10 times, 1 s apart, each in its own task and fork, all given the same task): all 10 wrote an honest claim and **all 10 were verified**; none touched the protected file. Because all 10 changed the same file, the first verified change merged and the other 9 were blocked by the merge rule, as designed. All 10 finished within 59 s of the first start; median push → verdict 8.6 s (max 15.4 s); no errors. This run used the existing script; no code changed.
 
 **Also tested:**
 - The real agent alone, 5 runs: all honest, all merged (details in "Scene 2").
